@@ -2,6 +2,9 @@ import os
 import subprocess
 import sys
 import re
+import threading
+import http.server
+import socketserver
 from pathlib import Path
 from typing import Annotated
 
@@ -34,6 +37,7 @@ def run_command(command: list[str], cwd: Path) -> None:
             text=True,
             bufsize=1,
         )
+        # Stream logs in real-time
         if process.stdout:
             for line in process.stdout:
                 print(line, end="")
@@ -60,8 +64,46 @@ geolocationEnabled = false
 """
     CONFIG_FILE.write_text(content, encoding="utf-8")
 
+def fix_project_structure() -> None:
+    """
+    Self-Healing: Syncs build.gradle applicationId with the actual directory structure on disk.
+    This recovers from interrupted builds where folders moved but config wasn't updated.
+    """
+    try:
+        # 1. Find where MainActivity.java actually lives
+        # It looks for app/src/main/java/com/{SOMETHING}/webtoapk/MainActivity.java
+        java_files = list(BASE_DIR.glob("app/src/main/java/com/*/webtoapk/MainActivity.java"))
+        
+        if not java_files:
+            print("[BUILDER] Warning: MainActivity.java not found in expected structure. Auto-fix might fail.")
+            return
+
+        # The parent folder of 'webtoapk' is the current App ID on disk
+        current_folder_id = java_files[0].parent.parent.name
+        
+        # 2. Read what Gradle thinks the ID is
+        gradle_path = BASE_DIR / "app/build.gradle"
+        if not gradle_path.exists(): return
+        
+        content = gradle_path.read_text(encoding="utf-8")
+        
+        # 3. Compare and Fix
+        match = re.search(r'applicationId "com\.([a-zA-Z0-9_]+)\.webtoapk"', content)
+        if match:
+            configured_id = match.group(1)
+            
+            if configured_id != current_folder_id:
+                print(f"[BUILDER] REPAIRING: Gradle ID '{configured_id}' mismatch with Folder '{current_folder_id}'. Syncing...")
+                # Force Gradle to match the folder structure
+                new_content = content.replace(
+                    f'applicationId "com.{configured_id}.webtoapk"', 
+                    f'applicationId "com.{current_folder_id}.webtoapk"'
+                )
+                gradle_path.write_text(new_content, encoding="utf-8")
+    except Exception as e:
+        print(f"[BUILDER] Auto-fix warning: {e}")
+
 def patch_source_code(app_id: str) -> None:
-    """Forces package renaming and applies fix to MainActivity."""
     java_files = list(BASE_DIR.glob("app/src/main/java/**/*.java"))
     print(f"[BUILDER] Patching {len(java_files)} source files for App ID '{app_id}'...")
 
@@ -105,24 +147,26 @@ async def build_apk(
         raise RuntimeError("Missing required fields.")
 
     try:
-        # 1. Save Icon & Config
+        # 1. Run Self-Healing (Fixes interrupted builds)
+        fix_project_structure()
+
+        # 2. Save Icon & Config
         icon_data = await icon_file.read()
         (BASE_DIR / ICON_FILENAME).write_bytes(icon_data)
         write_conf(app_id, name, main_url)
 
-        # 2. Clean & Apply Config
-        # Note: We don't check for dependencies here; make.sh apk will fail fast if setup.py wasn't run.
-        run_command(["bash", str(MAKE_SH_PATH), "clean"], cwd=BASE_DIR)
+        # 3. Apply Config
+        # Optimization: We skipped 'clean' to make it fast.
         run_command(["bash", str(MAKE_SH_PATH), "apply_config"], cwd=BASE_DIR)
 
-        # 3. Patch Source
+        # 4. Patch Source
         patch_source_code(app_id)
 
-        # 4. Build
+        # 5. Build
         print("[BUILDER] Starting APK assembly...")
         run_command(["bash", str(MAKE_SH_PATH), "apk"], cwd=BASE_DIR)
 
-        # 5. Return Result
+        # 6. Return Result
         expected_apk = BASE_DIR / f"{app_id}.apk"
         if not expected_apk.exists():
             raise FileNotFoundError(f"Build succeeded but {expected_apk.name} not found.")
@@ -137,6 +181,8 @@ async def build_apk(
         print(f"Server Error: {e}")
         raise RuntimeError(f"Build Failed: {str(e)}")
 
+# --- APP SETUP ---
+
 cors_config = CORSConfig(allow_origins=["http://localhost:8001"]) 
 
 app = Litestar(
@@ -144,6 +190,26 @@ app = Litestar(
     cors_config=cors_config
 )
 
+def run_frontend_server():
+    """Starts a simple HTTP server for the frontend on port 8001."""
+    PORT = 8001
+    Handler = http.server.SimpleHTTPRequestHandler
+    socketserver.TCPServer.allow_reuse_address = True
+    
+    try:
+        with socketserver.TCPServer(("", PORT), Handler) as httpd:
+            print(f"[FRONTEND] UI Server started at http://localhost:{PORT}")
+            httpd.serve_forever()
+    except OSError as e:
+        print(f"[FRONTEND] Error: Port {PORT} is busy. Is the server already running? ({e})")
+
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    
+    # 1. Start Frontend (Daemon thread)
+    frontend_thread = threading.Thread(target=run_frontend_server, daemon=True)
+    frontend_thread.start()
+
+    # 2. Start Backend (Blocking)
+    print(f"[BACKEND] API Server started at http://0.0.0.0:8000")
+    uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")
