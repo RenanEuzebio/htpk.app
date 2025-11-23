@@ -18,11 +18,11 @@ allprojects {
 apply plugin: 'com.android.application'
 
 android {
-    namespace 'com.myexample.webtoapk'
+    namespace 'com.pjqwoj.webtoapk'
 
     compileSdkVersion 33
     defaultConfig {
-        applicationId "com.myexample.webtoapk"
+        applicationId "com.pjqwoj.webtoapk"
         minSdkVersion 24
         targetSdkVersion 33
         versionCode 1
@@ -53,7 +53,7 @@ android {
 
     buildTypes {
         release {
-            minifyEnabled true
+            minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
             signingConfig signingConfigs.release
         }
