@@ -1,4 +1,4 @@
-# HTP - Website-to-APK Builder
+# HTPK - Website-to-APK Builder
 
 A minimal, high-speed tool to convert any website into an Android APK. It runs a local web interface and a high-performance API backend from a single command.
 
