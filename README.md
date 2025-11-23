@@ -58,7 +58,7 @@ python app.py
 ### 2\. Build Your App
 
 1.  Open your browser to **[http://localhost:8001](https://www.google.com/search?q=http://localhost:8001)**.
-2.  Enter the **App ID** (e.g., `myapp`), **App Name**, and **URL**.
+2.  Enter the **App ID**, **App Name**, and **URL**.
 3.  Upload a **PNG Icon**.
 4.  Click **Build APK**.
 
