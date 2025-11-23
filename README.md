@@ -1,4 +1,4 @@
-# Fast Website-to-APK Builder
+# HTPK (Online Static Site to APK Converter)
 
 A minimal, high-speed tool to convert any website into an Android APK. It uses a **Litestar** backend to orchestrate the build process and a simple HTML frontend for input.
 
