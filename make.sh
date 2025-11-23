@@ -96,7 +96,11 @@ apk() {
     [ ! -f "app/my-release-key.jks" ] && error "Keystore file not found. Run 'python setup.py' first."
     rm -f app/build/outputs/apk/release/app-release.apk
     info "Building APK..."
-    try "./gradlew assembleRelease --no-daemon --quiet"
+    
+    # OLD: try "./gradlew assembleRelease --no-daemon --quiet"
+    # NEW: Remove --no-daemon
+    try "./gradlew assembleRelease --quiet"
+    
     [ -f "app/build/outputs/apk/release/app-release.apk" ] && log "APK Built!" || error "Build failed"
     try "cp app/build/outputs/apk/release/app-release.apk '$appname.apk'"
 }
