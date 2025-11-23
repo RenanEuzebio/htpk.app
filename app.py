@@ -1,6 +1,7 @@
 import os
 import subprocess
 import sys
+import re
 from pathlib import Path
 from typing import Annotated
 
@@ -20,34 +21,27 @@ ICON_FILENAME = "icon.png"
 # --- HELPERS ---
 
 def run_command(command: list[str], cwd: Path) -> None:
-    """Runs a shell command and streams output in real-time."""
+    """Runs a shell command and streams output in real-time to the terminal."""
     try:
-        # Ensure make.sh is executable
         if str(MAKE_SH_PATH) in command:
              os.chmod(MAKE_SH_PATH, 0o755)
 
         print(f"[BUILDER] Executing: {' '.join(command)}")
         
-        # Use Popen to stream output line by line
         process = subprocess.Popen(
             command,
             cwd=cwd,
             stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT, # Merge stderr into stdout
+            stderr=subprocess.STDOUT,
             text=True,
-            bufsize=1, # Line buffered
-            # Ensure the script doesn't hang on prompts by simulating "yes" if needed
-            # (though for 'read' commands in bash without a pipe, it might still be tricky, 
-            # but usually they default or fail fast without TTY)
+            bufsize=1,
         )
 
-        # Print output as it happens
         if process.stdout:
             for line in process.stdout:
-                print(line, end="") # Line already has newline
-                sys.stdout.flush()  # Force write to terminal immediately
+                print(line, end="")
+                sys.stdout.flush()
 
-        # Wait for completion
         return_code = process.wait()
 
         if return_code != 0:
@@ -74,22 +68,42 @@ geolocationEnabled = false
 """
     CONFIG_FILE.write_text(content, encoding="utf-8")
 
-def apply_java_bug_fix() -> None:
-    java_files = list(BASE_DIR.glob("app/src/main/java/**/MainActivity.java"))
+def patch_source_code(app_id: str) -> None:
+    """
+    Scans all Java files and enforces the correct package name and bug fixes.
+    This fixes errors where manual copy-pasting reverts the package to 'com.myexample'.
+    """
+    java_files = list(BASE_DIR.glob("app/src/main/java/**/*.java"))
     
-    if not java_files:
-        raise FileNotFoundError("MainActivity.java not found. 'apply_config' likely failed.")
-    
-    target_file = java_files[0]
-    content = target_file.read_text(encoding="utf-8")
-    
-    broken_code = 'LOCATION_PERMISSION_REQUEST_CODE = "";'
-    fixed_code = 'LOCATION_PERMISSION_REQUEST_CODE = 1001;'
-    
-    if broken_code in content:
-        new_content = content.replace(broken_code, fixed_code)
-        target_file.write_text(new_content, encoding="utf-8")
-        print("[BUILDER] Bug fix applied.")
+    print(f"[BUILDER] Enforcing package 'com.{app_id}.webtoapk' on {len(java_files)} source files...")
+
+    for file_path in java_files:
+        try:
+            content = file_path.read_text(encoding="utf-8")
+            original_content = content
+
+            # 1. Force Package Name to match App ID
+            # Replaces 'package com.ANYTHING.webtoapk;' with 'package com.{app_id}.webtoapk;'
+            content = re.sub(
+                r'package\s+com\.[a-zA-Z0-9_]+\.webtoapk;', 
+                f'package com.{app_id}.webtoapk;', 
+                content
+            )
+
+            # 2. Fix 'MainActivity.java' specific bugs
+            if file_path.name == "MainActivity.java":
+                # Fix the LOCATION_PERMISSION_REQUEST_CODE bug
+                broken_code = 'LOCATION_PERMISSION_REQUEST_CODE = "";'
+                fixed_code = 'LOCATION_PERMISSION_REQUEST_CODE = 1001;'
+                if broken_code in content:
+                    content = content.replace(broken_code, fixed_code)
+
+            # Only write to disk if changes were made to save IO
+            if content != original_content:
+                file_path.write_text(content, encoding="utf-8")
+                
+        except Exception as e:
+            print(f"[BUILDER] Warning: Failed to patch {file_path.name}: {e}")
 
 # --- HANDLERS ---
 
@@ -117,18 +131,14 @@ async def build_apk(
         # 3. Generate Key (if missing)
         if not (BASE_DIR / "app/my-release-key.jks").exists():
             print("[BUILDER] Generating Keystore...")
-            # The 'yes' command pipes 'y' into make.sh in case it asks for confirmation
-            # However, since we run run_command directly, we rely on make.sh logic.
-            # If make.sh prompts for input, it might still hang. 
-            # For purely automated environments, prompts should be removed from .sh
             run_command(["bash", str(MAKE_SH_PATH), "keygen"], cwd=BASE_DIR)
 
         # 4. Clean & Apply Config
         run_command(["bash", str(MAKE_SH_PATH), "clean"], cwd=BASE_DIR)
         run_command(["bash", str(MAKE_SH_PATH), "apply_config"], cwd=BASE_DIR)
 
-        # 5. Apply Code Fix
-        apply_java_bug_fix()
+        # 5. Auto-Patch Source Code (Fixes Package Name & Bugs)
+        patch_source_code(app_id)
 
         # 6. Build APK
         print("[BUILDER] Building APK...")
@@ -157,3 +167,7 @@ app = Litestar(
     route_handlers=[build_apk],
     cors_config=cors_config
 )
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
