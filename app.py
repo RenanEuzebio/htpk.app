@@ -21,13 +21,11 @@ ICON_FILENAME = "icon.png"
 # --- HELPERS ---
 
 def run_command(command: list[str], cwd: Path) -> None:
-    """Runs a shell command and streams output in real-time to the terminal."""
     try:
         if str(MAKE_SH_PATH) in command:
              os.chmod(MAKE_SH_PATH, 0o755)
 
         print(f"[BUILDER] Executing: {' '.join(command)}")
-        
         process = subprocess.Popen(
             command,
             cwd=cwd,
@@ -36,21 +34,15 @@ def run_command(command: list[str], cwd: Path) -> None:
             text=True,
             bufsize=1,
         )
-
         if process.stdout:
             for line in process.stdout:
                 print(line, end="")
                 sys.stdout.flush()
-
         return_code = process.wait()
-
         if return_code != 0:
             raise subprocess.CalledProcessError(return_code, command)
-
     except subprocess.CalledProcessError as e:
-        error_msg = f"Command failed with return code {e.returncode}"
-        print(f"\n[BUILDER] ERROR: {error_msg}")
-        raise RuntimeError(error_msg)
+        raise RuntimeError(f"Build command failed with code {e.returncode}")
 
 def write_conf(app_id: str, name: str, main_url: str) -> None:
     content = f"""
@@ -69,41 +61,33 @@ geolocationEnabled = false
     CONFIG_FILE.write_text(content, encoding="utf-8")
 
 def patch_source_code(app_id: str) -> None:
-    """
-    Scans all Java files and enforces the correct package name and bug fixes.
-    This fixes errors where manual copy-pasting reverts the package to 'com.myexample'.
-    """
+    """Forces package renaming and applies fix to MainActivity."""
     java_files = list(BASE_DIR.glob("app/src/main/java/**/*.java"))
-    
-    print(f"[BUILDER] Enforcing package 'com.{app_id}.webtoapk' on {len(java_files)} source files...")
+    print(f"[BUILDER] Patching {len(java_files)} source files for App ID '{app_id}'...")
 
     for file_path in java_files:
         try:
             content = file_path.read_text(encoding="utf-8")
             original_content = content
 
-            # 1. Force Package Name to match App ID
-            # Replaces 'package com.ANYTHING.webtoapk;' with 'package com.{app_id}.webtoapk;'
+            # 1. Fix Package Name
             content = re.sub(
                 r'package\s+com\.[a-zA-Z0-9_]+\.webtoapk;', 
                 f'package com.{app_id}.webtoapk;', 
                 content
             )
 
-            # 2. Fix 'MainActivity.java' specific bugs
+            # 2. Fix MainActivity Bugs
             if file_path.name == "MainActivity.java":
-                # Fix the LOCATION_PERMISSION_REQUEST_CODE bug
                 broken_code = 'LOCATION_PERMISSION_REQUEST_CODE = "";'
                 fixed_code = 'LOCATION_PERMISSION_REQUEST_CODE = 1001;'
                 if broken_code in content:
                     content = content.replace(broken_code, fixed_code)
 
-            # Only write to disk if changes were made to save IO
             if content != original_content:
                 file_path.write_text(content, encoding="utf-8")
-                
         except Exception as e:
-            print(f"[BUILDER] Warning: Failed to patch {file_path.name}: {e}")
+            print(f"[BUILDER] Warning: Could not patch {file_path.name}: {e}")
 
 # --- HANDLERS ---
 
@@ -121,33 +105,27 @@ async def build_apk(
         raise RuntimeError("Missing required fields.")
 
     try:
-        # 1. Save Icon
+        # 1. Save Icon & Config
         icon_data = await icon_file.read()
         (BASE_DIR / ICON_FILENAME).write_bytes(icon_data)
-
-        # 2. Write Config
         write_conf(app_id, name, main_url)
 
-        # 3. Generate Key (if missing)
-        if not (BASE_DIR / "app/my-release-key.jks").exists():
-            print("[BUILDER] Generating Keystore...")
-            run_command(["bash", str(MAKE_SH_PATH), "keygen"], cwd=BASE_DIR)
-
-        # 4. Clean & Apply Config
+        # 2. Clean & Apply Config
+        # Note: We don't check for dependencies here; make.sh apk will fail fast if setup.py wasn't run.
         run_command(["bash", str(MAKE_SH_PATH), "clean"], cwd=BASE_DIR)
         run_command(["bash", str(MAKE_SH_PATH), "apply_config"], cwd=BASE_DIR)
 
-        # 5. Auto-Patch Source Code (Fixes Package Name & Bugs)
+        # 3. Patch Source
         patch_source_code(app_id)
 
-        # 6. Build APK
-        print("[BUILDER] Building APK...")
+        # 4. Build
+        print("[BUILDER] Starting APK assembly...")
         run_command(["bash", str(MAKE_SH_PATH), "apk"], cwd=BASE_DIR)
 
-        # 7. Locate Result
+        # 5. Return Result
         expected_apk = BASE_DIR / f"{app_id}.apk"
         if not expected_apk.exists():
-            raise FileNotFoundError(f"Build finished but {expected_apk.name} was not found.")
+            raise FileNotFoundError(f"Build succeeded but {expected_apk.name} not found.")
 
         return File(
             path=expected_apk,
@@ -158,8 +136,6 @@ async def build_apk(
     except Exception as e:
         print(f"Server Error: {e}")
         raise RuntimeError(f"Build Failed: {str(e)}")
-
-# --- APP SETUP ---
 
 cors_config = CORSConfig(allow_origins=["http://localhost:8001"]) 
 
