@@ -4,7 +4,7 @@ A minimal, high-performance tool to convert any static website or URL into an An
 
 ## Key Features
 
-* **Unified Runtime:** A single script launches both the Build API [(Litestar)](https://litestar.dev/) and the Web UI.
+* **Unified Runtime:** A single script launches both the Build API ([Litestar])(https://litestar.dev/) and the Web UI.
 * **Automated Setup:** Automatically checks for and downloads Java 17 JDK and Android Command Line Tools if they are missing.
 * **Optimized Building:** Configured for maximum Gradle speed (Daemon enabled, parallel execution, and caching).
 * **Auto-Patching:** Automatically updates the Android source code, package names, and permissions to match your input configuration before every build.
