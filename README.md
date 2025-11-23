@@ -1,47 +1,90 @@
-# Fast Website-to-APK Builder
+# HTPK - Website-to-APK Builder
 
-A minimal, high-speed tool to convert any website into an Android APK. It uses a **Litestar** backend to orchestrate the build process and a simple HTML frontend for input.
+A minimal, high-performance tool to convert any static website or URL into an Android APK. It features a local web interface for configuration and a dedicated build backend that orchestrates the Android compilation process.
 
-## Features
+## Key Features
 
-* **Minimalist:** Stripped down logic for maximum build speed.
-* **Fast API:** Powered by [Litestar](https://litestar.dev/).
-* **Automatic Dependency Handling:** Automatically downloads Java 17 and Android SDK command-line tools if they are missing.
-* **Native Fixes:** Includes automatic patching for common permission bugs in the generated Android source.
+* **Unified Runtime:** A single script launches both the Build API [(http://localhost:8001)](https://litestar.dev/) and the Web UI.
+* **Automated Setup:** Automatically checks for and downloads Java 17 JDK and Android Command Line Tools if they are missing.
+* **Optimized Building:** Configured for maximum Gradle speed (Daemon enabled, parallel execution, and caching).
+* **Auto-Patching:** Automatically updates the Android source code, package names, and permissions to match your input configuration before every build.
+* **Self-Healing:** Detects and repairs project structure mismatches if a build is interrupted.
 
 ## Prerequisites
 
 * **OS:** Linux or WSL2 (Windows Subsystem for Linux).
 * **Python:** 3.12+
-* **Package Manager:** [uv](https://github.com/astral-sh/uv) (Recommended) or pip.
+* **Package Manager:** `uv` (Recommended) or `pip`.
 
 ## Installation
 
-1.  **Clone the repository** and enter the directory:
-    ```bash
-    git clone <your-repo-url>
-    cd website-to-apk
-    ```
+### 1. Clone the Repository
+```bash
+git clone https://github.com/RenanEuzebio/htpk.app/ 
+cd htpk.app/
+````
 
-2.  **Initialize environment and install dependencies using `uv`:**
-    ```bash
-    uv venv
-    source .venv/bin/activate
-    uv pip install litestar uvicorn python-multipart
-    ```
+### 2\. Install Dependencies
 
-3.  **Verify Permissions:**
-    Ensure the build script is executable:
-    ```bash
-    chmod +x make.sh
-    ```
+We recommend using `uv` for fast virtual environment management.
+
+```bash
+# Create virtual environment
+uv venv
+source .venv/bin/activate
+
+# Install Python requirements
+uv pip install litestar uvicorn python-multipart
+```
+
+### 3\. Initial Setup (Run Once)
+
+Run the setup script to download the required build tools (\~150MB). This generates your signing keystore and sets up the Android SDK environment.
+
+```bash
+python setup.py
+```
 
 ## Usage
 
-You need to run two separate terminal processes.
+### 1\. Start the Application
 
-### Terminal 1: The Backend
-This starts the API server on port **8000**.
+Run the main application script. This handles both the backend logic and serves the frontend interface.
+
 ```bash
-source .venv/bin/activate
-litestar run
+python app.py
+```
+
+### 2\. Build Your App
+
+1.  Open your browser to **[http://localhost:8001](https://www.google.com/search?q=http://localhost:8001)**.
+2.  Enter the **App ID** (e.g., `myapp`), **App Name**, and **URL**.
+3.  Upload a **PNG Icon**.
+4.  Click **Build APK**.
+
+*The first build may take 1-2 minutes to initialize Gradle. Subsequent builds typically complete in 5-30 seconds.*
+
+### 3\. Locate Your APK
+
+Once finished, the APK will download automatically in your browser. You can also find saved copies in the `output_apks/` folder.
+
+## Directory Structure
+
+The project is organized into modular components:
+
+  * **`app.py`**: The main entry point. Orchestrates the API, serves the frontend, and manages the build queue.
+  * **`setup.py`**: Handles environment initialization (downloading Java/SDKs).
+  * **`web_interface/`**: Contains the HTML/JS frontend code.
+  * **`build_scripts/`**: Contains the low-level Shell scripts (`make.sh`) that wrap Gradle commands.
+  * **`android_source/`**: The complete Android project source code (`app`, `gradle`, manifest, etc.).
+  * **`output_apks/`**: The destination folder for all successfully built APKs.
+
+## Troubleshooting
+
+  * **"Port 8000/8001 already in use":** Ensure no other instances of the script are running. You can check with `lsof -i :8000`.
+  * **Build Fails immediately:** Check the terminal output. If you see errors about missing files, try running `python setup.py` again to ensure the SDK is complete.
+
+<!-- end list -->
+
+```
+```
