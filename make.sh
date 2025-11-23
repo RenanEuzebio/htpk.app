@@ -92,7 +92,8 @@ apply_config() {
 }
 
 apk() {
-    [ ! -f "app/my-release-key.jks" ] && error "Keystore file not found."
+    ensure_deps
+    [ ! -f "app/my-release-key.jks" ] && error "Keystore file not found. Run 'python setup.py' first."
     rm -f app/build/outputs/apk/release/app-release.apk
     info "Building APK..."
     try "./gradlew assembleRelease --no-daemon --quiet"
@@ -104,10 +105,13 @@ keygen() {
     if [ ! -f "app/my-release-key.jks" ]; then
         info "Generating keystore..."
         try "keytool -genkey -v -keystore app/my-release-key.jks -keyalg RSA -keysize 2048 -validity 10000 -alias my -storepass '123456' -keypass '123456' -dname '$INFO'"
+    else
+        log "Keystore already exists."
     fi
 }
 
 clean() {
+    ensure_deps
     info "Cleaning build files..."
     try rm -rf app/build .gradle
     log "Clean completed"
@@ -145,46 +149,35 @@ set_icon() {
     fi
 }
 
-# --- Dependency Management Helpers ---
+# --- Dependency Management ---
 
 get_tools() {
     info "Downloading Android Command Line Tools..."
-    
     case "$(uname -s)" in
         Linux*)     os_type="linux";;
-        # Darwin*)    os_type="mac";;
         *)         error "Unsupported OS";;
     esac
     
     tmp_dir=$(mktemp -d)
     cd "$tmp_dir"
-    
     try "wget -q --show-progress 'https://dl.google.com/android/repository/commandlinetools-${os_type}-11076708_latest.zip' -O cmdline-tools.zip"
-    
     info "Extracting tools..."
     try "unzip -q cmdline-tools.zip"
     try "mkdir -p '$ANDROID_HOME/cmdline-tools/latest'"
     try "mv cmdline-tools/* '$ANDROID_HOME/cmdline-tools/latest/'"
-    
     cd "$OLDPWD"
     rm -rf "$tmp_dir"
 
     info "Accepting licenses..."
     try "yes | '$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager' --sdk_root=$ANDROID_HOME --licenses"
-    
     info "Installing necessary SDK components..."
-    try "'$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager' --sdk_root=$ANDROID_HOME \
-        'platform-tools' \
-        'platforms;android-33' \
-        'build-tools;33.0.2'" 
-
+    try "'$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager' --sdk_root=$ANDROID_HOME 'platform-tools' 'platforms;android-33' 'build-tools;33.0.2'" 
     log "Android SDK successfully installed!"
 }
 
 get_java() {
     local install_dir="$PWD/jvm"
     local jdk_version="17.0.2"
-    local jdk_hash="0022753d0cceecacdd3a795dd4cea2bd7ffdf9dc06e22ffd1be98411742fbb44"
     local jdk_url="https://download.java.net/java/GA/jdk17.0.2/dfd4a8d0985749f896bed50d7138ee7f/8/GPL/openjdk-17.0.2_linux-x64_bin.tar.gz"
 
     if [ -d "$install_dir/jdk-${jdk_version}" ]; then
@@ -196,49 +189,35 @@ get_java() {
 
     local tmp_dir=$(mktemp -d)
     cd "$tmp_dir"
-    
     info "Downloading OpenJDK ${jdk_version}..."
     try "wget -q --show-progress '$jdk_url' -O openjdk.tar.gz"
-    
-    info "Verifying checksum..."
-    try "echo '${jdk_hash} openjdk.tar.gz' | sha256sum -c -"
-    
-    info "Unpacking to ${install_dir}..."
+    info "Unpacking..."
     try "mkdir -p '$install_dir'"
     try "tar xf openjdk.tar.gz"
     try "mv jdk-${jdk_version} '$install_dir/'"
-    
     cd "$OLDPWD"
     rm -rf "$tmp_dir"
 
     export JAVA_HOME="$install_dir/jdk-${jdk_version}"
     export PATH="$JAVA_HOME/bin:$PATH"
-    
     log "OpenJDK ${jdk_version} downloaded successfully!"
 }
 
 check_and_find_java() {
-    # First check existing JAVA_HOME
     if [ -n "${JAVA_HOME:-}" ] && [ -x "$JAVA_HOME/bin/java" ]; then
         version=$("$JAVA_HOME/bin/java" -version 2>&1 | head -n 1 | cut -d'"' -f2 | cut -d'.' -f1)
         if [ "$version" = "17" ]; then
             info "Using system JAVA_HOME: $JAVA_HOME"
             export PATH="$JAVA_HOME/bin:$PATH"
             return 0
-        else
-            warn "Current JAVA_HOME points to wrong version: $version"
         fi
     fi
-
-    # Then check local installation
     if [ -d "$PWD/jvm/jdk-17.0.2" ]; then
         info "Using local Java installation"
         export JAVA_HOME="$PWD/jvm/jdk-17.0.2"
         export PATH="$JAVA_HOME/bin:$PATH"
         return 0
     fi
-
-    # Finally check /usr/lib/jvm
     if [ -d "/usr/lib/jvm" ]; then
         while IFS= read -r java_path; do
             if [ -x "$java_path/bin/java" ]; then
@@ -252,8 +231,23 @@ check_and_find_java() {
             fi
         done < <(find /usr/lib/jvm -maxdepth 1 -type d)
     fi
-
     return 1
+}
+
+install_deps() {
+    if ! check_and_find_java; then
+        warn "Java 17 not found. Downloading..."
+        get_java
+    fi
+    if [ ! -d "$ANDROID_HOME" ]; then
+        warn "Android Command Line Tools not found. Downloading..."
+        get_tools
+    fi
+}
+
+ensure_deps() {
+    check_and_find_java || error "Java 17 not found. Please run 'python setup.py' to install dependencies."
+    [ -d "$ANDROID_HOME" ] || error "Android SDK not found. Please run 'python setup.py' to install dependencies."
 }
 
 ###############################################################################
@@ -263,33 +257,8 @@ export ANDROID_HOME=$PWD/cmdline-tools/
 appname=$(grep -Po '(?<=applicationId "com\.)[^.]*' app/build.gradle)
 export GRADLE_USER_HOME=$PWD/.gradle-cache
 
-# --- AUTO-INSTALL LOGIC ---
-
-# Try to find Java 17, auto-download if missing
-if ! check_and_find_java; then
-    warn "Java 17 not found. Auto-downloading..."
-    get_java
-    if ! command -v java >/dev/null 2>&1; then
-        error "Java installation failed"
-    fi
-fi
-
-# Auto-download Android Tools if missing
-if [ ! -d "$ANDROID_HOME" ]; then
-    warn "Android Command Line Tools not found. Auto-downloading..."
-    get_tools
-fi
-
-# Verify Java version
-java_version=$(java -version 2>&1 | head -n 1 | cut -d'"' -f2 | cut -d'.' -f1)
-if [ "$java_version" != "17" ]; then
-    error "Wrong Java version: $java_version. Java 17 is required"
-fi
-
-# --------------------------
-
 if [ $# -eq 0 ]; then
-    echo "Usage: $0 [keygen|build|clean|apk|apply_config]"
+    echo "Usage: $0 [install_deps|keygen|build|clean|apk|apply_config]"
     exit 1
 fi
 
