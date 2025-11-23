@@ -15,11 +15,22 @@ from litestar.enums import RequestEncodingType
 from litestar.params import Body
 from litestar.response import File
 
-# --- CONFIGURATION ---
+# --- CONFIGURATION & PATHS ---
 BASE_DIR = Path(__file__).parent.absolute()
-MAKE_SH_PATH = BASE_DIR / "make.sh"
-CONFIG_FILE = BASE_DIR / "webapk.conf"
+
+# Directory Definitions
+ANDROID_DIR = BASE_DIR / "android_source"
+SCRIPTS_DIR = BASE_DIR / "build_scripts"
+WEB_DIR = BASE_DIR / "web_interface"
+OUTPUT_DIR = BASE_DIR / "output_apks"
+
+# File Paths
+MAKE_SH_PATH = SCRIPTS_DIR / "make.sh"
+CONFIG_FILE = ANDROID_DIR / "webapk.conf" # Config now lives inside android_source
 ICON_FILENAME = "icon.png"
+
+# Ensure output directory exists
+OUTPUT_DIR.mkdir(exist_ok=True)
 
 # --- HELPERS ---
 
@@ -28,7 +39,13 @@ def run_command(command: list[str], cwd: Path) -> None:
         if str(MAKE_SH_PATH) in command:
              os.chmod(MAKE_SH_PATH, 0o755)
 
+        # Add the android source path to the environment so make.sh knows where it is
+        env = os.environ.copy()
+        env["ANDROID_PROJECT_ROOT"] = str(ANDROID_DIR)
+        env["OUTPUT_DIR"] = str(OUTPUT_DIR)
+
         print(f"[BUILDER] Executing: {' '.join(command)}")
+        
         process = subprocess.Popen(
             command,
             cwd=cwd,
@@ -36,8 +53,9 @@ def run_command(command: list[str], cwd: Path) -> None:
             stderr=subprocess.STDOUT,
             text=True,
             bufsize=1,
+            env=env
         )
-        # Stream logs in real-time
+        
         if process.stdout:
             for line in process.stdout:
                 print(line, end="")
@@ -65,36 +83,24 @@ geolocationEnabled = false
     CONFIG_FILE.write_text(content, encoding="utf-8")
 
 def fix_project_structure() -> None:
-    """
-    Self-Healing: Syncs build.gradle applicationId with the actual directory structure on disk.
-    This recovers from interrupted builds where folders moved but config wasn't updated.
-    """
+    """Syncs build.gradle applicationId with the actual directory structure."""
     try:
-        # 1. Find where MainActivity.java actually lives
-        # It looks for app/src/main/java/com/{SOMETHING}/webtoapk/MainActivity.java
-        java_files = list(BASE_DIR.glob("app/src/main/java/com/*/webtoapk/MainActivity.java"))
-        
+        java_files = list(ANDROID_DIR.glob("app/src/main/java/com/*/webtoapk/MainActivity.java"))
         if not java_files:
-            print("[BUILDER] Warning: MainActivity.java not found in expected structure. Auto-fix might fail.")
+            print("[BUILDER] Warning: MainActivity.java not found. Auto-fix might fail.")
             return
 
-        # The parent folder of 'webtoapk' is the current App ID on disk
         current_folder_id = java_files[0].parent.parent.name
+        gradle_path = ANDROID_DIR / "app/build.gradle"
         
-        # 2. Read what Gradle thinks the ID is
-        gradle_path = BASE_DIR / "app/build.gradle"
         if not gradle_path.exists(): return
         
         content = gradle_path.read_text(encoding="utf-8")
-        
-        # 3. Compare and Fix
         match = re.search(r'applicationId "com\.([a-zA-Z0-9_]+)\.webtoapk"', content)
         if match:
             configured_id = match.group(1)
-            
             if configured_id != current_folder_id:
-                print(f"[BUILDER] REPAIRING: Gradle ID '{configured_id}' mismatch with Folder '{current_folder_id}'. Syncing...")
-                # Force Gradle to match the folder structure
+                print(f"[BUILDER] REPAIRING: Syncing Gradle ID '{configured_id}' to Folder '{current_folder_id}'")
                 new_content = content.replace(
                     f'applicationId "com.{configured_id}.webtoapk"', 
                     f'applicationId "com.{current_folder_id}.webtoapk"'
@@ -104,7 +110,7 @@ def fix_project_structure() -> None:
         print(f"[BUILDER] Auto-fix warning: {e}")
 
 def patch_source_code(app_id: str) -> None:
-    java_files = list(BASE_DIR.glob("app/src/main/java/**/*.java"))
+    java_files = list(ANDROID_DIR.glob("app/src/main/java/**/*.java"))
     print(f"[BUILDER] Patching {len(java_files)} source files for App ID '{app_id}'...")
 
     for file_path in java_files:
@@ -112,14 +118,12 @@ def patch_source_code(app_id: str) -> None:
             content = file_path.read_text(encoding="utf-8")
             original_content = content
 
-            # 1. Fix Package Name
             content = re.sub(
                 r'package\s+com\.[a-zA-Z0-9_]+\.webtoapk;', 
                 f'package com.{app_id}.webtoapk;', 
                 content
             )
 
-            # 2. Fix MainActivity Bugs
             if file_path.name == "MainActivity.java":
                 broken_code = 'LOCATION_PERMISSION_REQUEST_CODE = "";'
                 fixed_code = 'LOCATION_PERMISSION_REQUEST_CODE = 1001;'
@@ -147,32 +151,31 @@ async def build_apk(
         raise RuntimeError("Missing required fields.")
 
     try:
-        # 1. Run Self-Healing (Fixes interrupted builds)
+        # 1. Run Self-Healing
         fix_project_structure()
 
-        # 2. Save Icon & Config
+        # 2. Save Icon & Config to Android Dir
         icon_data = await icon_file.read()
-        (BASE_DIR / ICON_FILENAME).write_bytes(icon_data)
+        (ANDROID_DIR / ICON_FILENAME).write_bytes(icon_data)
         write_conf(app_id, name, main_url)
 
-        # 3. Apply Config
-        # Optimization: We skipped 'clean' to make it fast.
-        run_command(["bash", str(MAKE_SH_PATH), "apply_config"], cwd=BASE_DIR)
+        # 3. Apply Config (Execute make.sh from SCRIPTS_DIR)
+        run_command(["bash", str(MAKE_SH_PATH), "apply_config"], cwd=SCRIPTS_DIR)
 
         # 4. Patch Source
         patch_source_code(app_id)
 
         # 5. Build
         print("[BUILDER] Starting APK assembly...")
-        run_command(["bash", str(MAKE_SH_PATH), "apk"], cwd=BASE_DIR)
+        run_command(["bash", str(MAKE_SH_PATH), "apk"], cwd=SCRIPTS_DIR)
 
-        # 6. Return Result
-        expected_apk = BASE_DIR / f"{app_id}.apk"
-        if not expected_apk.exists():
-            raise FileNotFoundError(f"Build succeeded but {expected_apk.name} not found.")
+        # 6. Return Result from OUTPUT_DIR
+        final_apk = OUTPUT_DIR / f"{app_id}.apk"
+        if not final_apk.exists():
+            raise FileNotFoundError(f"Build succeeded but {final_apk.name} not found in output folder.")
 
         return File(
-            path=expected_apk,
+            path=final_apk,
             filename=f"{app_id}_release.apk",
             media_type="application/vnd.android.package-archive"
         )
@@ -191,8 +194,10 @@ app = Litestar(
 )
 
 def run_frontend_server():
-    """Starts a simple HTTP server for the frontend on port 8001."""
     PORT = 8001
+    # Change directory to web_interface so index.html is served at root
+    os.chdir(WEB_DIR)
+    
     Handler = http.server.SimpleHTTPRequestHandler
     socketserver.TCPServer.allow_reuse_address = True
     
@@ -201,15 +206,12 @@ def run_frontend_server():
             print(f"[FRONTEND] UI Server started at http://localhost:{PORT}")
             httpd.serve_forever()
     except OSError as e:
-        print(f"[FRONTEND] Error: Port {PORT} is busy. Is the server already running? ({e})")
+        print(f"[FRONTEND] Error: Port {PORT} is busy. ({e})")
 
 if __name__ == "__main__":
     import uvicorn
-    
-    # 1. Start Frontend (Daemon thread)
     frontend_thread = threading.Thread(target=run_frontend_server, daemon=True)
     frontend_thread.start()
 
-    # 2. Start Backend (Blocking)
     print(f"[BACKEND] API Server started at http://0.0.0.0:8000")
     uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")
