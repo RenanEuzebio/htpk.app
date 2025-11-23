@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>APK Builder</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-900 text-gray-100 min-h-screen flex items-center justify-center">
+    <div class="max-w-md w-full bg-gray-800 p-8 rounded-xl shadow-2xl border border-gray-700">
+        <h1 class="text-2xl font-bold text-center mb-6 text-white">Fast APK Builder</h1>
+        <form id="buildForm" class="space-y-4">
+            <div>
+                <label class="text-sm text-gray-400">App ID (e.g. myapp)</label>
+                <input type="text" name="app_id" required pattern="[a-z][a-z0-9_]*" class="w-full bg-gray-700 border border-gray-600 rounded p-2 focus:ring-2 focus:ring-blue-500 outline-none" placeholder="myapp" value="myapp">
+            </div>
+            <div>
+                <label class="text-sm text-gray-400">App Name</label>
+                <input type="text" name="name" required class="w-full bg-gray-700 border border-gray-600 rounded p-2 focus:ring-2 focus:ring-blue-500 outline-none" placeholder="My App" value="My App">
+            </div>
+            <div>
+                <label class="text-sm text-gray-400">Website URL</label>
+                <input type="url" name="main_url" required class="w-full bg-gray-700 border border-gray-600 rounded p-2 focus:ring-2 focus:ring-blue-500 outline-none" placeholder="https://google.com" value="https://google.com">
+            </div>
+            <div>
+                <label class="text-sm text-gray-400">Icon (PNG)</label>
+                <input type="file" name="icon" accept="image/png" required class="w-full text-sm text-gray-400 file:bg-gray-600 file:text-white file:border-0 file:rounded file:px-4 file:py-2">
+            </div>
+            <button type="submit" id="submitBtn" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded transition">Build APK</button>
+        </form>
+        <div id="status" class="mt-4 text-center text-sm hidden"></div>
+    </div>
+
+    <script>
+        const form = document.getElementById('buildForm');
+        const btn = document.getElementById('submitBtn');
+        const status = document.getElementById('status');
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            btn.disabled = true;
+            btn.textContent = "Building...";
+            status.textContent = "Processing... Check terminal for logs.";
+            status.className = "mt-4 text-center text-sm text-yellow-400 block";
+
+            try {
+                // Fetching from Backend on Port 8000
+                const response = await fetch('http://localhost:8000/build-app', {
+                    method: 'POST',
+                    body: new FormData(form)
+                });
+
+                if (!response.ok) throw new Error((await response.json()).message || 'Build failed');
+
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'app-release.apk';
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                
+                status.textContent = "Success! Downloading...";
+                status.className = "mt-4 text-center text-sm text-green-400 block";
+            } catch (error) {
+                status.textContent = "Error: " + error.message;
+                status.className = "mt-4 text-center text-sm text-red-400 block";
+            } finally {
+                btn.disabled = false;
+                btn.textContent = "Build APK";
+            }
+        });
+    </script>
+</body>
+</html>
