@@ -85,6 +85,3 @@ The project is organized into modular components:
   * **Build Fails immediately:** Check the terminal output. If you see errors about missing files, try running `python setup.py` again to ensure the SDK is complete.
 
 <!-- end list -->
-
-```
-```
