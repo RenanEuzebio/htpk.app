@@ -7,19 +7,12 @@ DEPS_ROOT="${DEPENDENCIES_ROOT:-$PWD/dependencies}"
 OUTPUT_DEST="${OUTPUT_DIR:-$PWD/output_apks}"
 
 # --- ENV SETUP ---
-# 1. Android SDK
 export ANDROID_HOME="$DEPS_ROOT/cmdline-tools"
-
-# 2. Java
 export JAVA_HOME="$DEPS_ROOT/jvm/jdk-17.0.2"
-
-# 3. Gradle (Local Installation)
 export GRADLE_HOME="$DEPS_ROOT/gradle/gradle-7.4"
-
-# 4. Gradle Global Cache (Redirected to dependencies)
 export GRADLE_USER_HOME="$DEPS_ROOT/.gradle-cache"
 
-# 5. Update PATH to use our local tools
+# Add our local Gradle and Java to the PATH
 export PATH="$JAVA_HOME/bin:$GRADLE_HOME/bin:$PATH"
 
 # Color definitions
@@ -34,7 +27,6 @@ log() { echo -e "${GREEN}[+]${NC} $1"; }
 info() { echo -e "${BLUE}[*]${NC} $1"; }
 error() { echo -e "${RED}[!]${NC} $1"; exit 1; }
 
-# Ensure we operate in the project root for build context
 if [ ! -d "$PROJECT_ROOT" ]; then
     if [[ "$1" != "install_deps" ]]; then
          error "Android Source directory not found at: $PROJECT_ROOT"
@@ -49,100 +41,11 @@ try() {
     fi
 }
 
-# --- DEPENDENCY MANAGEMENT ---
-
-get_tools() {
-    info "Downloading Android Command Line Tools..."
-    case "$(uname -s)" in
-        Linux*)     os_type="linux";;
-        Darwin*)    os_type="mac";;
-        *)          error "Unsupported OS";;
-    esac
-    
-    mkdir -p "$ANDROID_HOME"
-    
-    local tmp_dir=$(mktemp -d)
-    pushd "$tmp_dir" > /dev/null
-    
-    wget -q --show-progress "https://dl.google.com/android/repository/commandlinetools-${os_type}-11076708_latest.zip" -O cmdline-tools.zip
-    unzip -q cmdline-tools.zip
-    
-    mkdir -p "$ANDROID_HOME/latest"
-    mv cmdline-tools/* "$ANDROID_HOME/latest/"
-    
-    popd > /dev/null
-    rm -rf "$tmp_dir"
-
-    info "Accepting licenses..."
-    yes | "$ANDROID_HOME/latest/bin/sdkmanager" --sdk_root="$ANDROID_HOME" --licenses > /dev/null 2>&1 || true
-    
-    info "Installing build tools..."
-    "$ANDROID_HOME/latest/bin/sdkmanager" --sdk_root="$ANDROID_HOME" "platform-tools" "platforms;android-33" "build-tools;33.0.2" "build-tools;30.0.3"
-}
-
-get_java() {
-    local install_dir="$DEPS_ROOT/jvm"
-    local jdk_url="https://download.java.net/java/GA/jdk17.0.2/dfd4a8d0985749f896bed50d7138ee7f/8/GPL/openjdk-17.0.2_linux-x64_bin.tar.gz"
-
-    if [ -d "$install_dir/jdk-17.0.2" ]; then return 0; fi
-
-    local tmp_dir=$(mktemp -d)
-    pushd "$tmp_dir" > /dev/null
-    
-    info "Downloading Java 17..."
-    wget -q --show-progress "$jdk_url" -O openjdk.tar.gz
-    
-    info "Unpacking Java..."
-    mkdir -p "$install_dir"
-    tar xf openjdk.tar.gz
-    mv jdk-17.0.2 "$install_dir/"
-    
-    popd > /dev/null
-    rm -rf "$tmp_dir"
-}
-
-get_gradle() {
-    local install_dir="$DEPS_ROOT/gradle"
-    local gradle_url="https://services.gradle.org/distributions/gradle-7.4-bin.zip"
-
-    if [ -d "$install_dir/gradle-7.4" ]; then return 0; fi
-
-    local tmp_dir=$(mktemp -d)
-    pushd "$tmp_dir" > /dev/null
-    
-    info "Downloading Gradle 7.4..."
-    wget -q --show-progress "$gradle_url" -O gradle.zip
-    
-    info "Unpacking Gradle..."
-    mkdir -p "$install_dir"
-    unzip -q gradle.zip
-    mv gradle-7.4 "$install_dir/"
-    
-    popd > /dev/null
-    rm -rf "$tmp_dir"
-}
-
-install_deps() {
-    mkdir -p "$DEPS_ROOT"
-    mkdir -p "$DEPS_ROOT/.gradle-cache" # Ensure global cache dir exists
-    mkdir -p "$DEPS_ROOT/.gradle"       # Ensure project cache dir exists
-    
-    get_java
-    get_gradle
-    
-    if [ ! -f "$ANDROID_HOME/latest/bin/sdkmanager" ]; then
-        get_tools
-    fi
-    
-    log "All dependencies installed locally."
-}
-
 # --- BUILD COMMANDS ---
 
 ensure_deps() {
-    if [ ! -x "$JAVA_HOME/bin/java" ]; then error "Java 17 not found in dependencies. Run 'python setup.py' first."; fi
-    if [ ! -x "$GRADLE_HOME/bin/gradle" ]; then error "Gradle not found in dependencies. Run 'python setup.py' first."; fi
     [ -d "$ANDROID_HOME" ] || error "Android SDK not found. Run 'python setup.py' first."
+    [ -x "$GRADLE_HOME/bin/gradle" ] || error "Gradle not found. Run 'python setup.py' first."
 }
 
 apk() {
@@ -152,7 +55,7 @@ apk() {
     
     info "Building APK..."
     
-    # Force project-specific cache to dependencies/.gradle using our local gradle binary
+    # CHANGE: Use 'gradle' (local binary) instead of './gradlew' (wrapper script)
     try gradle assembleRelease --quiet --project-cache-dir "$DEPS_ROOT/.gradle"
     
     if [ -f "app/build/outputs/apk/release/app-release.apk" ]; then
@@ -218,7 +121,6 @@ set_var() {
 keygen() {
     if [ ! -f "app/my-release-key.jks" ]; then
         info "Generating keystore..."
-        # FIXED: Changed '$INFO' to "$INFO" to allow variable expansion
         try keytool -genkey -v -keystore app/my-release-key.jks -keyalg RSA -keysize 2048 -validity 10000 -alias my -storepass '123456' -keypass '123456' -dname "$INFO"
     fi
 }
@@ -226,9 +128,7 @@ keygen() {
 clean() {
     ensure_deps
     info "Cleaning build files..."
-    # Clean build output
     try rm -rf app/build
-    # Clean project cache in dependencies
     try rm -rf "$DEPS_ROOT/.gradle"
 }
 
@@ -263,6 +163,10 @@ set_icon() {
     if [ -n "${CONFIG_DIR:-}" ] && [[ "$icon_path" != /* ]]; then icon_path="$CONFIG_DIR/$icon_path"; fi
     if [ -f "$icon_path" ]; then try cp "$icon_path" "$dest_file"; fi
 }
+
+get_tools() { return 0; } 
+get_java() { return 0; }
+install_deps() { return 0; }
 
 appname=$(grep -Po '(?<=applicationId "com\.)[^.]*' app/build.gradle || echo "unknown")
 
