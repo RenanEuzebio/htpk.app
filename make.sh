@@ -19,7 +19,7 @@ export GRADLE_HOME="$DEPS_ROOT/gradle/gradle-7.4"
 # 4. Gradle Global Cache (Redirected to dependencies)
 export GRADLE_USER_HOME="$DEPS_ROOT/.gradle-cache"
 
-# 5. Update PATH
+# 5. Update PATH to use our local tools
 export PATH="$JAVA_HOME/bin:$GRADLE_HOME/bin:$PATH"
 
 # Color definitions
@@ -152,7 +152,7 @@ apk() {
     
     info "Building APK..."
     
-    # Force project-specific cache to dependencies/.gradle
+    # Force project-specific cache to dependencies/.gradle using our local gradle binary
     try gradle assembleRelease --quiet --project-cache-dir "$DEPS_ROOT/.gradle"
     
     if [ -f "app/build/outputs/apk/release/app-release.apk" ]; then
@@ -218,7 +218,8 @@ set_var() {
 keygen() {
     if [ ! -f "app/my-release-key.jks" ]; then
         info "Generating keystore..."
-        try keytool -genkey -v -keystore app/my-release-key.jks -keyalg RSA -keysize 2048 -validity 10000 -alias my -storepass '123456' -keypass '123456' -dname '$INFO'
+        # FIXED: Changed '$INFO' to "$INFO" to allow variable expansion
+        try keytool -genkey -v -keystore app/my-release-key.jks -keyalg RSA -keysize 2048 -validity 10000 -alias my -storepass '123456' -keypass '123456' -dname "$INFO"
     fi
 }
 
@@ -262,10 +263,6 @@ set_icon() {
     if [ -n "${CONFIG_DIR:-}" ] && [[ "$icon_path" != /* ]]; then icon_path="$CONFIG_DIR/$icon_path"; fi
     if [ -f "$icon_path" ]; then try cp "$icon_path" "$dest_file"; fi
 }
-
-get_tools() { return 0; } 
-get_java() { return 0; }
-install_deps() { return 0; }
 
 appname=$(grep -Po '(?<=applicationId "com\.)[^.]*' app/build.gradle || echo "unknown")
 
