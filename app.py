@@ -18,14 +18,21 @@ from litestar.response import File
 # --- CONFIGURATION & PATHS ---
 BASE_DIR = Path(__file__).parent.absolute()
 ANDROID_DIR = BASE_DIR / "android_source"
-DEPENDENCIES_DIR = BASE_DIR / "dependencies"
-WEB_DIR = BASE_DIR / "web_interface"
-OUTPUT_DIR = BASE_DIR / "output_apks"
+# RENAMED
+DEPENDENCIES_DIR = BASE_DIR / "lib"
+# RENAMED
+WEB_DIR = BASE_DIR / "web_ui"
+# RENAMED
+OUTPUT_DIR = BASE_DIR / "output"
+# NEW
+CACHE_DIR = BASE_DIR / "cache"
+
 MAKE_SH_PATH = BASE_DIR / "make.sh"
 ICON_FILENAME = "icon.png"
 CONF_FILENAME = "webapk.conf"
 
 OUTPUT_DIR.mkdir(exist_ok=True)
+CACHE_DIR.mkdir(exist_ok=True)
 
 # --- HELPERS ---
 
@@ -37,6 +44,8 @@ def run_command(command: list[str], cwd: Path, output_target_dir: Path = None) -
         env = os.environ.copy()
         env["ANDROID_PROJECT_ROOT"] = str(ANDROID_DIR)
         env["DEPENDENCIES_ROOT"] = str(DEPENDENCIES_DIR)
+        # Pass the new cache location to the shell script
+        env["CACHE_DIR"] = str(CACHE_DIR)
         
         if output_target_dir:
             env["OUTPUT_DIR"] = str(output_target_dir)
