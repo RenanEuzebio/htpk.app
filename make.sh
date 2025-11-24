@@ -3,16 +3,18 @@ set -eu
 
 # --- PATH CONFIGURATION ---
 PROJECT_ROOT="${ANDROID_PROJECT_ROOT:-$PWD/android_source}"
-DEPS_ROOT="${DEPENDENCIES_ROOT:-$PWD/dependencies}"
-OUTPUT_DEST="${OUTPUT_DIR:-$PWD/output_apks}"
+DEPS_ROOT="${DEPENDENCIES_ROOT:-$PWD/lib}"
+OUTPUT_DEST="${OUTPUT_DIR:-$PWD/output}"
+CACHE_ROOT="${CACHE_DIR:-$PWD/cache}"
 
 # --- ENV SETUP ---
+# Defines where our local tools live (Must match setup.py)
 export ANDROID_HOME="$DEPS_ROOT/cmdline-tools"
 export JAVA_HOME="$DEPS_ROOT/jvm/jdk-17.0.2"
 export GRADLE_HOME="$DEPS_ROOT/gradle/gradle-7.4"
-export GRADLE_USER_HOME="$DEPS_ROOT/.gradle-cache"
+export GRADLE_USER_HOME="$CACHE_ROOT/.gradle-cache"
 
-# Add our local Gradle and Java to the PATH
+# Add local tools to PATH
 export PATH="$JAVA_HOME/bin:$GRADLE_HOME/bin:$PATH"
 
 # Color definitions
@@ -21,16 +23,13 @@ readonly GREEN='\033[0;32m'
 readonly BLUE='\033[0;34m'
 readonly NC='\033[0m'
 
-INFO="CN=Developer, OU=Organization, O=Company, L=City, S=State, C=US"
-
 log() { echo -e "${GREEN}[+]${NC} $1"; }
 info() { echo -e "${BLUE}[*]${NC} $1"; }
 error() { echo -e "${RED}[!]${NC} $1"; exit 1; }
 
+# Navigate to project root
 if [ ! -d "$PROJECT_ROOT" ]; then
-    if [[ "$1" != "install_deps" ]]; then
-         error "Android Source directory not found at: $PROJECT_ROOT"
-    fi
+     error "Android Source directory not found at: $PROJECT_ROOT"
 else
     cd "$PROJECT_ROOT"
 fi
@@ -44,19 +43,21 @@ try() {
 # --- BUILD COMMANDS ---
 
 ensure_deps() {
-    [ -d "$ANDROID_HOME" ] || error "Android SDK not found. Run 'python setup.py' first."
-    [ -x "$GRADLE_HOME/bin/gradle" ] || error "Gradle not found. Run 'python setup.py' first."
+    # Lightweight check to ensure setup.py was run
+    [ -d "$ANDROID_HOME" ] || error "Android SDK not found. Please run 'python setup.py' first."
+    [ -x "$GRADLE_HOME/bin/gradle" ] || error "Gradle not found. Please run 'python setup.py' first."
 }
 
 apk() {
     ensure_deps
-    [ ! -f "app/my-release-key.jks" ] && error "Keystore not found."
+    [ ! -f "app/my-release-key.jks" ] && error "Keystore not found. Run 'python setup.py'."
+    
     rm -f app/build/outputs/apk/release/app-release.apk
     
     info "Building APK..."
     
-    # CHANGE: Use 'gradle' (local binary) instead of './gradlew' (wrapper script)
-    try gradle assembleRelease --quiet --project-cache-dir "$DEPS_ROOT/.gradle"
+    # Build using local Gradle and cache
+    try gradle assembleRelease --quiet --project-cache-dir "$CACHE_ROOT/.gradle"
     
     if [ -f "app/build/outputs/apk/release/app-release.apk" ]; then
         log "APK Built Successfully!"
@@ -118,18 +119,10 @@ set_var() {
     mv "$tmp_file" "$java_file"
 }
 
-keygen() {
-    if [ ! -f "app/my-release-key.jks" ]; then
-        info "Generating keystore..."
-        try keytool -genkey -v -keystore app/my-release-key.jks -keyalg RSA -keysize 2048 -validity 10000 -alias my -storepass '123456' -keypass '123456' -dname "$INFO"
-    fi
-}
-
 clean() {
-    ensure_deps
     info "Cleaning build files..."
     try rm -rf app/build
-    try rm -rf "$DEPS_ROOT/.gradle"
+    try rm -rf "$CACHE_ROOT/.gradle"
 }
 
 chid() {
@@ -163,10 +156,6 @@ set_icon() {
     if [ -n "${CONFIG_DIR:-}" ] && [[ "$icon_path" != /* ]]; then icon_path="$CONFIG_DIR/$icon_path"; fi
     if [ -f "$icon_path" ]; then try cp "$icon_path" "$dest_file"; fi
 }
-
-get_tools() { return 0; } 
-get_java() { return 0; }
-install_deps() { return 0; }
 
 appname=$(grep -Po '(?<=applicationId "com\.)[^.]*' app/build.gradle || echo "unknown")
 
