@@ -3,218 +3,472 @@
     <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>APK Builder</title>
+        <title>HTPK // Builder</title>
         <script src="https://cdn.tailwindcss.com"></script>
+        <link
+            href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
+            rel="stylesheet"
+        />
+
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+        <link
+            href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap"
+            rel="stylesheet"
+        />
+
+        <script>
+            tailwind.config = {
+                theme: {
+                    extend: {
+                        fontFamily: {
+                            sans: ["Inter", "sans-serif"],
+                            mono: ["JetBrains Mono", "monospace"],
+                        },
+                        colors: {
+                            "tech-bg": "#0B0F15",
+                            "tech-surface": "#151A23",
+                            "tech-surface-lighter": "#1F2937",
+                            "tech-border": "#2D3748",
+                            "tech-accent": "#3B82F6",
+                            "tech-accent-hover": "#2563EB",
+                            "tech-text": "#E2E8F0",
+                            "tech-text-muted": "#94A3B8",
+                        },
+                        boxShadow: {
+                            glow: "0 0 20px -5px rgba(59, 130, 246, 0.3)",
+                            "inner-light":
+                                "inset 0 1px 0 0 rgba(255, 255, 255, 0.05)",
+                        },
+                        animation: {
+                            "slide-up": "slideUp 0.5s ease-out forwards",
+                        },
+                        keyframes: {
+                            slideUp: {
+                                "0%": {
+                                    opacity: "0",
+                                    transform: "translateY(15px)",
+                                },
+                                "100%": {
+                                    opacity: "1",
+                                    transform: "translateY(0)",
+                                },
+                            },
+                        },
+                    },
+                },
+            };
+        </script>
         <style>
-            .toggle-content {
-                transition: all 0.3s ease-in-out;
+            body {
+                background-color: #0b0f15;
+                background-image:
+                    radial-gradient(
+                        circle at 50% 0%,
+                        #1e293b 0%,
+                        transparent 50%
+                    ),
+                    radial-gradient(
+                        circle at 80% 80%,
+                        rgba(59, 130, 246, 0.05) 0%,
+                        transparent 30%
+                    );
+                color: #e2e8f0;
+            }
+            .tech-card {
+                background: rgba(21, 26, 35, 0.85);
+                backdrop-filter: blur(16px);
+                -webkit-backdrop-filter: blur(16px);
+                border: 1px solid rgba(255, 255, 255, 0.08);
+                box-shadow:
+                    0 25px 50px -12px rgba(0, 0, 0, 0.5),
+                    inset 0 1px 0 0 rgba(255, 255, 255, 0.05);
+            }
+            .tech-input {
+                background: rgba(11, 15, 21, 0.6);
+                border: 1px solid #2d3748;
+                transition: all 0.2s ease;
+            }
+            .tech-input:focus {
+                background: rgba(11, 15, 21, 0.9);
+                border-color: #3b82f6;
+                box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
+            }
+            .bg-grid {
+                background-size: 40px 40px;
+                background-image:
+                    linear-gradient(
+                        to right,
+                        rgba(255, 255, 255, 0.02) 1px,
+                        transparent 1px
+                    ),
+                    linear-gradient(
+                        to bottom,
+                        rgba(255, 255, 255, 0.02) 1px,
+                        transparent 1px
+                    );
+                mask-image: radial-gradient(
+                    circle at 50% 50%,
+                    black 40%,
+                    transparent 80%
+                );
             }
         </style>
     </head>
     <body
-        class="bg-gray-900 text-gray-100 min-h-screen flex items-center justify-center font-sans"
+        class="min-h-screen flex items-center justify-center p-4 relative overflow-hidden"
     >
-        <div
-            class="max-w-md w-full bg-gray-800 p-8 rounded-xl shadow-2xl border border-gray-700"
-        >
-            <h1 class="text-3xl font-bold text-center mb-2 text-white">
-                HTPK Builder
-            </h1>
-            <p class="text-center text-gray-400 mb-6 text-sm">
-                Turn websites or HTML projects into Android Apps
-            </p>
+        <div class="fixed inset-0 bg-grid pointer-events-none"></div>
 
-            <form id="buildForm" class="space-y-5">
-                <div class="grid grid-cols-2 gap-4">
-                    <div>
-                        <label
-                            class="block text-xs font-uppercase text-gray-500 mb-1 tracking-wider"
-                            >App ID</label
-                        >
-                        <input
-                            type="text"
-                            name="app_id"
-                            required
-                            pattern="[a-z][a-z0-9_]*"
-                            class="w-full bg-gray-700 border border-gray-600 rounded p-2.5 text-white focus:ring-2 focus:ring-indigo-500 outline-none transition"
-                            placeholder="myapp"
-                            value="myapp"
-                        />
-                    </div>
-                    <div>
-                        <label
-                            class="block text-xs font-uppercase text-gray-500 mb-1 tracking-wider"
-                            >App Name</label
-                        >
-                        <input
-                            type="text"
-                            name="name"
-                            required
-                            class="w-full bg-gray-700 border border-gray-600 rounded p-2.5 text-white focus:ring-2 focus:ring-indigo-500 outline-none transition"
-                            placeholder="My App"
-                            value="My App"
-                        />
-                    </div>
-                </div>
-
+        <div class="max-w-[500px] w-full relative z-10 animate-slide-up">
+            <div class="flex items-center justify-between mb-6 px-1">
                 <div>
-                    <label
-                        class="block text-xs font-uppercase text-gray-500 mb-2 tracking-wider"
-                        >Content Source</label
+                    <h1
+                        class="text-2xl font-semibold tracking-tight text-white"
                     >
-                    <div class="flex p-1 bg-gray-700 rounded-lg">
-                        <button
-                            type="button"
-                            id="btn-url"
-                            class="flex-1 py-2 rounded-md text-sm font-medium transition-colors bg-indigo-600 text-white shadow-sm"
-                            onclick="setSource('url')"
-                        >
-                            Website URL
-                        </button>
-                        <button
-                            type="button"
-                            id="btn-file"
-                            class="flex-1 py-2 rounded-md text-sm font-medium transition-colors text-gray-300 hover:text-white"
-                            onclick="setSource('file')"
-                        >
-                            Upload Assets
-                        </button>
-                    </div>
+                        <span class="text-tech-accent font-mono">HTPK</span> //
+                        Builder
+                    </h1>
+                    <p class="text-tech-text-muted text-sm mt-1">
+                        Deploy web assets to Android
+                    </p>
                 </div>
-
-                <div id="input-container" class="relative">
-                    <div id="group-url" class="toggle-content">
-                        <label
-                            class="block text-xs font-uppercase text-gray-500 mb-1 tracking-wider"
-                            >Website URL</label
-                        >
-                        <input
-                            type="url"
-                            id="input-url"
-                            name="main_url"
-                            required
-                            class="w-full bg-gray-700 border border-gray-600 rounded p-2.5 text-white focus:ring-2 focus:ring-indigo-500 outline-none"
-                            placeholder="https://google.com"
-                            value="https://google.com"
-                        />
-                    </div>
-
-                    <div id="group-file" class="toggle-content hidden">
-                        <label
-                            class="block text-xs font-uppercase text-gray-500 mb-1 tracking-wider"
-                            >Website Assets (.zip)</label
-                        >
-                        <input
-                            type="file"
-                            id="input-file"
-                            name="zip_file"
-                            accept=".zip"
-                            class="w-full text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-gray-600 file:text-white hover:file:bg-gray-500 transition"
-                        />
-                        <p class="text-xs text-gray-500 mt-1">
-                            * Upload a .zip containing index.html and
-                            dependencies.
-                        </p>
-                    </div>
-                </div>
-
-                <div>
-                    <label
-                        class="block text-xs font-uppercase text-gray-500 mb-1 tracking-wider"
-                        >App Icon (PNG)</label
-                    >
-                    <input
-                        type="file"
-                        name="icon"
-                        accept="image/png"
-                        required
-                        class="w-full text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-gray-600 file:text-white hover:file:bg-gray-500 transition"
-                    />
-                </div>
-
-                <button
-                    type="submit"
-                    id="submitBtn"
-                    class="w-full bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white font-bold py-3 rounded-lg shadow-lg transform active:scale-95 transition-all"
+                <div
+                    class="h-10 w-10 rounded-lg bg-tech-surface border border-tech-border flex items-center justify-center text-tech-text-muted shadow-inner-light"
                 >
-                    Build APK
-                </button>
-            </form>
+                    <i class="fa-brands fa-android text-lg"></i>
+                </div>
+            </div>
 
-            <div
-                id="status"
-                class="mt-4 p-3 rounded text-center text-sm hidden"
-            ></div>
+            <div class="tech-card rounded-xl p-6 md:p-8">
+                <form id="buildForm" class="space-y-6">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                        <div class="space-y-1.5">
+                            <label
+                                class="block text-xs font-medium text-tech-text-muted uppercase tracking-wider"
+                                >App ID</label
+                            >
+                            <input
+                                type="text"
+                                name="app_id"
+                                required
+                                pattern="[a-z][a-z0-9_]*"
+                                value="myapp"
+                                class="tech-input w-full px-4 py-2.5 rounded-lg text-sm text-white font-mono placeholder-gray-600 outline-none"
+                                placeholder="com.example.app"
+                            />
+                        </div>
 
-            <!-- Progress Container -->
-            <div id="progressContainer" class="mt-6 hidden">
-                <div class="bg-gray-700 rounded-lg p-6 border border-gray-600">
-                    <!-- Stage name and percentage -->
-                    <div class="flex items-center justify-between mb-3">
-                        <h3 id="progressStage" class="text-lg font-semibold text-white">
-                            Initializing...
-                        </h3>
-                        <span id="progressPercent" class="text-sm text-gray-400">0%</span>
+                        <div class="space-y-1.5">
+                            <label
+                                class="block text-xs font-medium text-tech-text-muted uppercase tracking-wider"
+                                >App Name</label
+                            >
+                            <input
+                                type="text"
+                                name="name"
+                                required
+                                value="My App"
+                                class="tech-input w-full px-4 py-2.5 rounded-lg text-sm text-white placeholder-gray-600 outline-none"
+                                placeholder="My Application"
+                            />
+                        </div>
                     </div>
 
-                    <!-- Progress bar -->
-                    <div class="w-full bg-gray-600 rounded-full h-3 mb-3 overflow-hidden">
+                    <div class="space-y-3 pt-2">
+                        <div class="flex justify-between items-end">
+                            <label
+                                class="block text-xs font-medium text-tech-text-muted uppercase tracking-wider"
+                                >Source Material</label
+                            >
+                        </div>
+
+                        <div
+                            class="bg-tech-surface-lighter/50 p-1 rounded-lg flex border border-tech-border/50"
+                        >
+                            <button
+                                type="button"
+                                id="btn-file"
+                                onclick="setSource('file')"
+                                class="flex-1 py-2 text-sm font-medium rounded-md transition-all flex items-center justify-center gap-2 shadow-sm bg-tech-accent text-white"
+                            >
+                                <i class="fa-solid fa-file-zipper"></i>
+                                <span>Archive</span>
+                            </button>
+                            <button
+                                type="button"
+                                id="btn-url"
+                                onclick="setSource('url')"
+                                class="flex-1 py-2 text-sm font-medium rounded-md transition-all flex items-center justify-center gap-2 text-tech-text-muted hover:text-white hover:bg-white/5"
+                            >
+                                <i class="fa-solid fa-globe"></i>
+                                <span>URL</span>
+                            </button>
+                        </div>
+
+                        <div id="group-file" class="mt-4">
+                            <div class="relative group">
+                                <input
+                                    id="input-file"
+                                    name="zip_file"
+                                    type="file"
+                                    accept=".zip"
+                                    class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                                />
+                                <div
+                                    class="tech-input border-dashed border-2 border-tech-border rounded-lg p-6 text-center transition-colors group-hover:border-tech-text-muted group-hover:bg-tech-surface-lighter/30"
+                                >
+                                    <div
+                                        id="upload-placeholder"
+                                        class="transition-opacity"
+                                    >
+                                        <div
+                                            class="w-12 h-12 rounded-full bg-tech-surface border border-tech-border flex items-center justify-center mx-auto mb-3 text-tech-accent shadow-glow"
+                                        >
+                                            <i
+                                                class="fa-solid fa-cloud-arrow-up"
+                                            ></i>
+                                        </div>
+                                        <p
+                                            class="text-sm font-medium text-tech-text"
+                                        >
+                                            Drop ZIP file here
+                                        </p>
+                                        <p
+                                            class="text-xs text-tech-text-muted mt-1"
+                                        >
+                                            Must contain index.html
+                                        </p>
+                                    </div>
+                                    <div
+                                        id="file-info"
+                                        class="hidden flex items-center justify-center gap-3"
+                                    >
+                                        <i
+                                            class="fa-solid fa-file-zipper text-tech-accent text-xl"
+                                        ></i>
+                                        <span
+                                            id="file-name-display"
+                                            class="font-mono text-sm text-white truncate max-w-[200px]"
+                                        ></span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div id="group-url" class="hidden mt-4">
+                            <div class="relative">
+                                <div
+                                    class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"
+                                >
+                                    <span
+                                        class="text-tech-text-muted font-mono text-xs"
+                                        >https://</span
+                                    >
+                                </div>
+                                <input
+                                    type="url"
+                                    id="input-url"
+                                    name="main_url"
+                                    placeholder="google.com"
+                                    value="https://google.com"
+                                    class="tech-input w-full pl-16 pr-4 py-2.5 rounded-lg text-sm text-white font-mono placeholder-gray-600 outline-none"
+                                />
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="pt-2">
+                        <label
+                            class="block text-xs font-medium text-tech-text-muted uppercase tracking-wider mb-2"
+                            >App Icon</label
+                        >
+                        <div class="flex items-center gap-4">
+                            <div
+                                id="icon-preview"
+                                class="h-14 w-14 rounded-xl bg-tech-surface border border-tech-border flex items-center justify-center overflow-hidden shrink-0"
+                            >
+                                <i
+                                    class="fa-regular fa-image text-tech-text-muted"
+                                ></i>
+                            </div>
+                            <div class="flex-1">
+                                <label
+                                    class="flex items-center justify-center w-full px-4 py-2 bg-tech-surface border border-tech-border rounded-lg cursor-pointer hover:bg-tech-surface-lighter hover:border-tech-text-muted transition-all group"
+                                >
+                                    <span
+                                        class="text-xs font-medium text-tech-text-muted group-hover:text-white transition-colors"
+                                        >Select PNG...</span
+                                    >
+                                    <input
+                                        type="file"
+                                        name="icon"
+                                        accept="image/png"
+                                        required
+                                        onchange="previewIcon(this)"
+                                        class="hidden"
+                                    />
+                                </label>
+                                <p
+                                    class="text-[10px] text-tech-text-muted mt-1.5 text-center md:text-left"
+                                >
+                                    *Recommended 512px
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="border-t border-tech-border/50 my-2"></div>
+
+                    <button
+                        type="submit"
+                        id="submitBtn"
+                        class="w-full bg-tech-accent hover:bg-tech-accent-hover text-white font-medium py-3 rounded-lg shadow-lg shadow-blue-900/20 transition-all transform active:scale-[0.98] flex items-center justify-center gap-2"
+                    >
+                        <span>Initiate Build</span>
+                        <i
+                            class="fa-solid fa-arrow-right text-xs opacity-70"
+                        ></i>
+                    </button>
+                </form>
+
+                <div
+                    id="status"
+                    class="mt-4 hidden p-3 rounded-lg text-sm font-mono border"
+                ></div>
+
+                <div id="progressContainer" class="mt-6 hidden">
+                    <div
+                        class="flex justify-between items-end mb-2 text-xs font-mono uppercase tracking-wider"
+                    >
+                        <span
+                            id="progressStage"
+                            class="text-tech-accent animate-pulse"
+                            >Initializing</span
+                        >
+                        <span id="progressPercent" class="text-white">0%</span>
+                    </div>
+                    <div
+                        class="w-full bg-tech-surface border border-tech-border rounded-full h-1.5 overflow-hidden"
+                    >
                         <div
                             id="progressBar"
-                            class="bg-gradient-to-r from-indigo-500 to-blue-500 h-3 rounded-full transition-all duration-300"
+                            class="bg-tech-accent h-1.5 rounded-full transition-all duration-300 shadow-glow"
                             style="width: 0%"
                         ></div>
                     </div>
-
-                    <!-- Status message -->
-                    <p id="progressMessage" class="text-sm text-gray-400">
-                        Starting build process...
+                    <p
+                        id="progressMessage"
+                        class="text-xs text-tech-text-muted mt-2 font-mono truncate"
+                    >
+                        Waiting for server response...
                     </p>
                 </div>
+            </div>
+
+            <div class="text-center mt-6">
+                <p
+                    class="text-[10px] text-tech-text-muted font-mono opacity-50"
+                >
+                    SYSTEM READY // V2.4
+                </p>
             </div>
         </div>
 
         <script>
+            // Elements
+            const btnUrl = document.getElementById("btn-url");
+            const btnFile = document.getElementById("btn-file");
+            const groupUrl = document.getElementById("group-url");
+            const groupFile = document.getElementById("group-file");
+            const inputUrl = document.getElementById("input-url");
+            const inputFile = document.getElementById("input-file");
+            const fileNameDisplay =
+                document.getElementById("file-name-display");
+            const uploadPlaceholder =
+                document.getElementById("upload-placeholder");
+            const fileInfo = document.getElementById("file-info");
+
             const form = document.getElementById("buildForm");
             const btn = document.getElementById("submitBtn");
             const status = document.getElementById("status");
-            const progressContainer = document.getElementById("progressContainer");
+            const progressContainer =
+                document.getElementById("progressContainer");
             const progressBar = document.getElementById("progressBar");
             const progressStage = document.getElementById("progressStage");
             const progressPercent = document.getElementById("progressPercent");
             const progressMessage = document.getElementById("progressMessage");
 
-            let currentMode = "url";
+            let currentMode = "file";
             let eventSource = null;
+            let buildFinished = false;
 
             function setSource(mode) {
                 currentMode = mode;
-                const btnUrl = document.getElementById("btn-url");
-                const btnFile = document.getElementById("btn-file");
-                const groupUrl = document.getElementById("group-url");
-                const groupFile = document.getElementById("group-file");
-                const inputUrl = document.getElementById("input-url");
-                const inputFile = document.getElementById("input-file");
+                const activeClass = "bg-tech-accent text-white shadow-sm";
+                const inactiveClass =
+                    "text-tech-text-muted hover:text-white hover:bg-white/5";
 
                 if (mode === "url") {
-                    btnUrl.className =
-                        "flex-1 py-2 rounded-md text-sm font-medium transition-colors bg-indigo-600 text-white shadow-sm";
-                    btnFile.className =
-                        "flex-1 py-2 rounded-md text-sm font-medium transition-colors text-gray-300 hover:text-white";
+                    // UI
+                    btnUrl.className = `flex-1 py-2 text-sm font-medium rounded-md transition-all flex items-center justify-center gap-2 ${activeClass}`;
+                    btnFile.className = `flex-1 py-2 text-sm font-medium rounded-md transition-all flex items-center justify-center gap-2 ${inactiveClass}`;
+
                     groupUrl.classList.remove("hidden");
+                    groupUrl.classList.add("animate-fade-in");
                     groupFile.classList.add("hidden");
+
+                    // LOGIC: Enable URL input, Disable File input
+                    inputUrl.disabled = false;
                     inputUrl.required = true;
+
+                    inputFile.disabled = true; // Key Fix
                     inputFile.required = false;
+
                     inputFile.value = "";
+                    resetFileUI();
                 } else {
-                    btnFile.className =
-                        "flex-1 py-2 rounded-md text-sm font-medium transition-colors bg-indigo-600 text-white shadow-sm";
-                    btnUrl.className =
-                        "flex-1 py-2 rounded-md text-sm font-medium transition-colors text-gray-300 hover:text-white";
+                    // UI
+                    btnFile.className = `flex-1 py-2 text-sm font-medium rounded-md transition-all flex items-center justify-center gap-2 ${activeClass}`;
+                    btnUrl.className = `flex-1 py-2 text-sm font-medium rounded-md transition-all flex items-center justify-center gap-2 ${inactiveClass}`;
+
                     groupFile.classList.remove("hidden");
                     groupUrl.classList.add("hidden");
-                    inputUrl.required = false;
+
+                    // LOGIC: Enable File input, Disable URL input
+                    inputFile.disabled = false;
                     inputFile.required = true;
+
+                    inputUrl.disabled = true; // Key Fix
+                    inputUrl.required = false;
+                }
+            }
+
+            function resetFileUI() {
+                uploadPlaceholder.classList.remove("hidden");
+                fileInfo.classList.add("hidden");
+            }
+
+            inputFile.addEventListener("change", function (e) {
+                if (this.files && this.files.length > 0) {
+                    fileNameDisplay.textContent = this.files[0].name;
+                    uploadPlaceholder.classList.add("hidden");
+                    fileInfo.classList.remove("hidden");
+                } else {
+                    resetFileUI();
+                }
+            });
+
+            function previewIcon(input) {
+                if (input.files && input.files[0]) {
+                    const reader = new FileReader();
+                    reader.onload = function (e) {
+                        const previewContainer =
+                            document.getElementById("icon-preview");
+                        previewContainer.innerHTML = `<img src="${e.target.result}" class="w-full h-full object-cover">`;
+                        previewContainer.classList.add("border-tech-accent");
+                    };
+                    reader.readAsDataURL(input.files[0]);
                 }
             }
 
@@ -226,7 +480,10 @@
             }
 
             function connectToProgressStream(buildId) {
-                eventSource = new EventSource(`http://localhost:8000/build-progress/${buildId}`);
+                buildFinished = false;
+                eventSource = new EventSource(
+                    `http://localhost:8000/build-progress/${buildId}`,
+                );
 
                 eventSource.onmessage = (event) => {
                     const data = JSON.parse(event.data);
@@ -235,57 +492,43 @@
 
                 eventSource.addEventListener("complete", (event) => {
                     const data = JSON.parse(event.data);
+                    buildFinished = true;
                     eventSource.close();
                     downloadAPK(data.build_id);
                 });
 
                 eventSource.addEventListener("error", (event) => {
+                    if (buildFinished) return;
+
                     if (event.data) {
                         const data = JSON.parse(event.data);
-                        status.textContent = "Error: " + data.error;
-                        status.className =
-                            "mt-4 p-3 rounded text-center text-sm bg-red-900/50 text-red-200 block border border-red-700";
-                    } else {
-                        status.textContent = "Connection error. Please try again.";
-                        status.className =
-                            "mt-4 p-3 rounded text-center text-sm bg-red-900/50 text-red-200 block border border-red-700";
+                        handleError(data.error);
                     }
-                    eventSource.close();
-                    progressContainer.classList.add("hidden");
-                    btn.disabled = false;
-                    btn.textContent = "Build APK";
+                    if (event.data) eventSource.close();
                 });
-
-                eventSource.onerror = (error) => {
-                    if (eventSource.readyState === EventSource.CLOSED) {
-                        // Connection closed normally, might be due to error event
-                        return;
-                    }
-                    console.error("EventSource error:", error);
-                };
             }
 
             async function downloadAPK(buildId) {
                 try {
-                    const response = await fetch(`http://localhost:8000/download-apk/${buildId}`);
-
-                    if (!response.ok) {
-                        throw new Error("Failed to download APK");
-                    }
+                    updateProgress("Finalizing", 100, "Downloading package...");
+                    const response = await fetch(
+                        `http://localhost:8000/download-apk/${buildId}`,
+                    );
+                    if (!response.ok) throw new Error("Failed to download APK");
 
                     const blob = await response.blob();
                     const url = window.URL.createObjectURL(blob);
                     const a = document.createElement("a");
                     a.href = url;
 
-                    // Get filename from Content-Disposition header or use default
-                    const contentDisposition = response.headers.get("content-disposition");
+                    const contentDisposition = response.headers.get(
+                        "content-disposition",
+                    );
                     let filename = "app_release.apk";
                     if (contentDisposition) {
-                        const filenameMatch = contentDisposition.match(/filename="?(.+)"?/);
-                        if (filenameMatch) {
-                            filename = filenameMatch[1];
-                        }
+                        const match =
+                            contentDisposition.match(/filename="?(.+)"?/);
+                        if (match) filename = match[1];
                     }
 
                     a.download = filename;
@@ -294,35 +537,48 @@
                     a.remove();
                     window.URL.revokeObjectURL(url);
 
-                    status.textContent = "Success! APK downloaded.";
-                    status.className =
-                        "mt-4 p-3 rounded text-center text-sm bg-green-900/50 text-green-200 block border border-green-700";
-                    progressContainer.classList.add("hidden");
-                    btn.disabled = false;
-                    btn.textContent = "Build APK";
+                    showStatus("APK generated successfully.", "success");
+                    resetUI();
                 } catch (error) {
-                    status.textContent = "Error downloading APK: " + error.message;
-                    status.className =
-                        "mt-4 p-3 rounded text-center text-sm bg-red-900/50 text-red-200 block border border-red-700";
-                    progressContainer.classList.add("hidden");
-                    btn.disabled = false;
-                    btn.textContent = "Build APK";
+                    handleError(error.message);
                 }
+            }
+
+            function showStatus(msg, type) {
+                status.textContent = msg;
+                status.classList.remove("hidden");
+                status.className =
+                    type === "error"
+                        ? "mt-4 p-3 rounded-lg text-sm font-mono border bg-red-900/20 border-red-800 text-red-300"
+                        : "mt-4 p-3 rounded-lg text-sm font-mono border bg-green-900/20 border-green-800 text-green-300";
+            }
+
+            function handleError(msg) {
+                showStatus(`Error: ${msg}`, "error");
+                progressContainer.classList.add("hidden");
+                resetUI();
+            }
+
+            function resetUI() {
+                btn.disabled = false;
+                btn.innerHTML = `<span>Initiate Build</span> <i class="fa-solid fa-arrow-right text-xs opacity-70"></i>`;
             }
 
             form.addEventListener("submit", async (e) => {
                 e.preventDefault();
                 btn.disabled = true;
-                btn.innerHTML = `<svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-white inline" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Starting Build...`;
+                btn.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin"></i> Processing...`;
                 status.classList.add("hidden");
                 progressContainer.classList.remove("hidden");
                 updateProgress("Starting", 0, "Submitting build request...");
 
                 try {
                     const formData = new FormData(form);
-                    if (currentMode === "file") {
-                        formData.delete("main_url");
-                    }
+
+                    // Since disabled inputs aren't sent automatically,
+                    // we just need to make sure we don't send empty ones if they exist.
+                    if (currentMode === "file") formData.delete("main_url");
+                    else formData.delete("zip_file");
 
                     const response = await fetch(
                         "http://localhost:8000/build-app",
@@ -338,21 +594,14 @@
                     }
 
                     const result = await response.json();
-                    const buildId = result.build_id;
-
-                    btn.textContent = "Building...";
-                    connectToProgressStream(buildId);
-
+                    connectToProgressStream(result.build_id);
                 } catch (error) {
-                    status.textContent = "Error: " + error.message;
-                    status.className =
-                        "mt-4 p-3 rounded text-center text-sm bg-red-900/50 text-red-200 block border border-red-700";
-                    status.classList.remove("hidden");
-                    progressContainer.classList.add("hidden");
-                    btn.disabled = false;
-                    btn.textContent = "Build APK";
+                    handleError(error.message);
                 }
             });
+
+            // Initialize UI state correctly on load
+            setSource("file");
         </script>
     </body>
 </html>
