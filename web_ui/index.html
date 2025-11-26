@@ -1,76 +1,358 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>APK Builder</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-</head>
-<body class="bg-gray-900 text-gray-100 min-h-screen flex items-center justify-center">
-    <div class="max-w-md w-full bg-gray-800 p-8 rounded-xl shadow-2xl border border-gray-700">
-        <h1 class="text-2xl font-bold text-center mb-6 text-white">Fast APK Builder</h1>
-        <form id="buildForm" class="space-y-4">
-            <div>
-                <label class="text-sm text-gray-400">App ID (e.g. myapp)</label>
-                <input type="text" name="app_id" required pattern="[a-z][a-z0-9_]*" class="w-full bg-gray-700 border border-gray-600 rounded p-2 focus:ring-2 focus:ring-blue-500 outline-none" placeholder="myapp" value="myapp">
-            </div>
-            <div>
-                <label class="text-sm text-gray-400">App Name</label>
-                <input type="text" name="name" required class="w-full bg-gray-700 border border-gray-600 rounded p-2 focus:ring-2 focus:ring-blue-500 outline-none" placeholder="My App" value="My App">
-            </div>
-            <div>
-                <label class="text-sm text-gray-400">Website URL</label>
-                <input type="url" name="main_url" required class="w-full bg-gray-700 border border-gray-600 rounded p-2 focus:ring-2 focus:ring-blue-500 outline-none" placeholder="https://google.com" value="https://google.com">
-            </div>
-            <div>
-                <label class="text-sm text-gray-400">Icon (PNG)</label>
-                <input type="file" name="icon" accept="image/png" required class="w-full text-sm text-gray-400 file:bg-gray-600 file:text-white file:border-0 file:rounded file:px-4 file:py-2">
-            </div>
-            <button type="submit" id="submitBtn" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded transition">Build APK</button>
-        </form>
-        <div id="status" class="mt-4 text-center text-sm hidden"></div>
-    </div>
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>APK Builder</title>
+        <script src="https://cdn.tailwindcss.com"></script>
+        <style>
+            .toggle-content {
+                transition: all 0.3s ease-in-out;
+            }
+        </style>
+    </head>
+    <body
+        class="bg-gray-900 text-gray-100 min-h-screen flex items-center justify-center font-sans"
+    >
+        <div
+            class="max-w-md w-full bg-gray-800 p-8 rounded-xl shadow-2xl border border-gray-700"
+        >
+            <h1 class="text-3xl font-bold text-center mb-2 text-white">
+                HTPK Builder
+            </h1>
+            <p class="text-center text-gray-400 mb-6 text-sm">
+                Turn websites or HTML projects into Android Apps
+            </p>
 
-    <script>
-        const form = document.getElementById('buildForm');
-        const btn = document.getElementById('submitBtn');
-        const status = document.getElementById('status');
+            <form id="buildForm" class="space-y-5">
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label
+                            class="block text-xs font-uppercase text-gray-500 mb-1 tracking-wider"
+                            >App ID</label
+                        >
+                        <input
+                            type="text"
+                            name="app_id"
+                            required
+                            pattern="[a-z][a-z0-9_]*"
+                            class="w-full bg-gray-700 border border-gray-600 rounded p-2.5 text-white focus:ring-2 focus:ring-indigo-500 outline-none transition"
+                            placeholder="myapp"
+                            value="myapp"
+                        />
+                    </div>
+                    <div>
+                        <label
+                            class="block text-xs font-uppercase text-gray-500 mb-1 tracking-wider"
+                            >App Name</label
+                        >
+                        <input
+                            type="text"
+                            name="name"
+                            required
+                            class="w-full bg-gray-700 border border-gray-600 rounded p-2.5 text-white focus:ring-2 focus:ring-indigo-500 outline-none transition"
+                            placeholder="My App"
+                            value="My App"
+                        />
+                    </div>
+                </div>
 
-        form.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            btn.disabled = true;
-            btn.textContent = "Building...";
-            status.textContent = "Processing... Check terminal for logs.";
-            status.className = "mt-4 text-center text-sm text-yellow-400 block";
+                <div>
+                    <label
+                        class="block text-xs font-uppercase text-gray-500 mb-2 tracking-wider"
+                        >Content Source</label
+                    >
+                    <div class="flex p-1 bg-gray-700 rounded-lg">
+                        <button
+                            type="button"
+                            id="btn-url"
+                            class="flex-1 py-2 rounded-md text-sm font-medium transition-colors bg-indigo-600 text-white shadow-sm"
+                            onclick="setSource('url')"
+                        >
+                            Website URL
+                        </button>
+                        <button
+                            type="button"
+                            id="btn-file"
+                            class="flex-1 py-2 rounded-md text-sm font-medium transition-colors text-gray-300 hover:text-white"
+                            onclick="setSource('file')"
+                        >
+                            Upload Assets
+                        </button>
+                    </div>
+                </div>
 
-            try {
-                // Fetching from Backend on Port 8000
-                const response = await fetch('http://localhost:8000/build-app', {
-                    method: 'POST',
-                    body: new FormData(form)
+                <div id="input-container" class="relative">
+                    <div id="group-url" class="toggle-content">
+                        <label
+                            class="block text-xs font-uppercase text-gray-500 mb-1 tracking-wider"
+                            >Website URL</label
+                        >
+                        <input
+                            type="url"
+                            id="input-url"
+                            name="main_url"
+                            required
+                            class="w-full bg-gray-700 border border-gray-600 rounded p-2.5 text-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                            placeholder="https://google.com"
+                            value="https://google.com"
+                        />
+                    </div>
+
+                    <div id="group-file" class="toggle-content hidden">
+                        <label
+                            class="block text-xs font-uppercase text-gray-500 mb-1 tracking-wider"
+                            >Website Assets (.zip)</label
+                        >
+                        <input
+                            type="file"
+                            id="input-file"
+                            name="zip_file"
+                            accept=".zip"
+                            class="w-full text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-gray-600 file:text-white hover:file:bg-gray-500 transition"
+                        />
+                        <p class="text-xs text-gray-500 mt-1">
+                            * Upload a .zip containing index.html and
+                            dependencies.
+                        </p>
+                    </div>
+                </div>
+
+                <div>
+                    <label
+                        class="block text-xs font-uppercase text-gray-500 mb-1 tracking-wider"
+                        >App Icon (PNG)</label
+                    >
+                    <input
+                        type="file"
+                        name="icon"
+                        accept="image/png"
+                        required
+                        class="w-full text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-gray-600 file:text-white hover:file:bg-gray-500 transition"
+                    />
+                </div>
+
+                <button
+                    type="submit"
+                    id="submitBtn"
+                    class="w-full bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white font-bold py-3 rounded-lg shadow-lg transform active:scale-95 transition-all"
+                >
+                    Build APK
+                </button>
+            </form>
+
+            <div
+                id="status"
+                class="mt-4 p-3 rounded text-center text-sm hidden"
+            ></div>
+
+            <!-- Progress Container -->
+            <div id="progressContainer" class="mt-6 hidden">
+                <div class="bg-gray-700 rounded-lg p-6 border border-gray-600">
+                    <!-- Stage name and percentage -->
+                    <div class="flex items-center justify-between mb-3">
+                        <h3 id="progressStage" class="text-lg font-semibold text-white">
+                            Initializing...
+                        </h3>
+                        <span id="progressPercent" class="text-sm text-gray-400">0%</span>
+                    </div>
+
+                    <!-- Progress bar -->
+                    <div class="w-full bg-gray-600 rounded-full h-3 mb-3 overflow-hidden">
+                        <div
+                            id="progressBar"
+                            class="bg-gradient-to-r from-indigo-500 to-blue-500 h-3 rounded-full transition-all duration-300"
+                            style="width: 0%"
+                        ></div>
+                    </div>
+
+                    <!-- Status message -->
+                    <p id="progressMessage" class="text-sm text-gray-400">
+                        Starting build process...
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <script>
+            const form = document.getElementById("buildForm");
+            const btn = document.getElementById("submitBtn");
+            const status = document.getElementById("status");
+            const progressContainer = document.getElementById("progressContainer");
+            const progressBar = document.getElementById("progressBar");
+            const progressStage = document.getElementById("progressStage");
+            const progressPercent = document.getElementById("progressPercent");
+            const progressMessage = document.getElementById("progressMessage");
+
+            let currentMode = "url";
+            let eventSource = null;
+
+            function setSource(mode) {
+                currentMode = mode;
+                const btnUrl = document.getElementById("btn-url");
+                const btnFile = document.getElementById("btn-file");
+                const groupUrl = document.getElementById("group-url");
+                const groupFile = document.getElementById("group-file");
+                const inputUrl = document.getElementById("input-url");
+                const inputFile = document.getElementById("input-file");
+
+                if (mode === "url") {
+                    btnUrl.className =
+                        "flex-1 py-2 rounded-md text-sm font-medium transition-colors bg-indigo-600 text-white shadow-sm";
+                    btnFile.className =
+                        "flex-1 py-2 rounded-md text-sm font-medium transition-colors text-gray-300 hover:text-white";
+                    groupUrl.classList.remove("hidden");
+                    groupFile.classList.add("hidden");
+                    inputUrl.required = true;
+                    inputFile.required = false;
+                    inputFile.value = "";
+                } else {
+                    btnFile.className =
+                        "flex-1 py-2 rounded-md text-sm font-medium transition-colors bg-indigo-600 text-white shadow-sm";
+                    btnUrl.className =
+                        "flex-1 py-2 rounded-md text-sm font-medium transition-colors text-gray-300 hover:text-white";
+                    groupFile.classList.remove("hidden");
+                    groupUrl.classList.add("hidden");
+                    inputUrl.required = false;
+                    inputFile.required = true;
+                }
+            }
+
+            function updateProgress(stage, progress, message) {
+                progressStage.textContent = stage;
+                progressPercent.textContent = `${progress}%`;
+                progressBar.style.width = `${progress}%`;
+                progressMessage.textContent = message;
+            }
+
+            function connectToProgressStream(buildId) {
+                eventSource = new EventSource(`http://localhost:8000/build-progress/${buildId}`);
+
+                eventSource.onmessage = (event) => {
+                    const data = JSON.parse(event.data);
+                    updateProgress(data.stage, data.progress, data.message);
+                };
+
+                eventSource.addEventListener("complete", (event) => {
+                    const data = JSON.parse(event.data);
+                    eventSource.close();
+                    downloadAPK(data.build_id);
                 });
 
-                if (!response.ok) throw new Error((await response.json()).message || 'Build failed');
+                eventSource.addEventListener("error", (event) => {
+                    if (event.data) {
+                        const data = JSON.parse(event.data);
+                        status.textContent = "Error: " + data.error;
+                        status.className =
+                            "mt-4 p-3 rounded text-center text-sm bg-red-900/50 text-red-200 block border border-red-700";
+                    } else {
+                        status.textContent = "Connection error. Please try again.";
+                        status.className =
+                            "mt-4 p-3 rounded text-center text-sm bg-red-900/50 text-red-200 block border border-red-700";
+                    }
+                    eventSource.close();
+                    progressContainer.classList.add("hidden");
+                    btn.disabled = false;
+                    btn.textContent = "Build APK";
+                });
 
-                const blob = await response.blob();
-                const url = window.URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = 'app-release.apk';
-                document.body.appendChild(a);
-                a.click();
-                a.remove();
-                
-                status.textContent = "Success! Downloading...";
-                status.className = "mt-4 text-center text-sm text-green-400 block";
-            } catch (error) {
-                status.textContent = "Error: " + error.message;
-                status.className = "mt-4 text-center text-sm text-red-400 block";
-            } finally {
-                btn.disabled = false;
-                btn.textContent = "Build APK";
+                eventSource.onerror = (error) => {
+                    if (eventSource.readyState === EventSource.CLOSED) {
+                        // Connection closed normally, might be due to error event
+                        return;
+                    }
+                    console.error("EventSource error:", error);
+                };
             }
-        });
-    </script>
-</body>
+
+            async function downloadAPK(buildId) {
+                try {
+                    const response = await fetch(`http://localhost:8000/download-apk/${buildId}`);
+
+                    if (!response.ok) {
+                        throw new Error("Failed to download APK");
+                    }
+
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement("a");
+                    a.href = url;
+
+                    // Get filename from Content-Disposition header or use default
+                    const contentDisposition = response.headers.get("content-disposition");
+                    let filename = "app_release.apk";
+                    if (contentDisposition) {
+                        const filenameMatch = contentDisposition.match(/filename="?(.+)"?/);
+                        if (filenameMatch) {
+                            filename = filenameMatch[1];
+                        }
+                    }
+
+                    a.download = filename;
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
+                    window.URL.revokeObjectURL(url);
+
+                    status.textContent = "Success! APK downloaded.";
+                    status.className =
+                        "mt-4 p-3 rounded text-center text-sm bg-green-900/50 text-green-200 block border border-green-700";
+                    progressContainer.classList.add("hidden");
+                    btn.disabled = false;
+                    btn.textContent = "Build APK";
+                } catch (error) {
+                    status.textContent = "Error downloading APK: " + error.message;
+                    status.className =
+                        "mt-4 p-3 rounded text-center text-sm bg-red-900/50 text-red-200 block border border-red-700";
+                    progressContainer.classList.add("hidden");
+                    btn.disabled = false;
+                    btn.textContent = "Build APK";
+                }
+            }
+
+            form.addEventListener("submit", async (e) => {
+                e.preventDefault();
+                btn.disabled = true;
+                btn.innerHTML = `<svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-white inline" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Starting Build...`;
+                status.classList.add("hidden");
+                progressContainer.classList.remove("hidden");
+                updateProgress("Starting", 0, "Submitting build request...");
+
+                try {
+                    const formData = new FormData(form);
+                    if (currentMode === "file") {
+                        formData.delete("main_url");
+                    }
+
+                    const response = await fetch(
+                        "http://localhost:8000/build-app",
+                        {
+                            method: "POST",
+                            body: formData,
+                        },
+                    );
+
+                    if (!response.ok) {
+                        const errorText = await response.text();
+                        throw new Error(errorText || "Build failed");
+                    }
+
+                    const result = await response.json();
+                    const buildId = result.build_id;
+
+                    btn.textContent = "Building...";
+                    connectToProgressStream(buildId);
+
+                } catch (error) {
+                    status.textContent = "Error: " + error.message;
+                    status.className =
+                        "mt-4 p-3 rounded text-center text-sm bg-red-900/50 text-red-200 block border border-red-700";
+                    status.classList.remove("hidden");
+                    progressContainer.classList.add("hidden");
+                    btn.disabled = false;
+                    btn.textContent = "Build APK";
+                }
+            });
+        </script>
+    </body>
 </html>
