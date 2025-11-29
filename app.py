@@ -33,11 +33,185 @@ CONF_FILENAME = "webapk.conf"
 OUTPUT_DIR.mkdir(exist_ok=True)
 CACHE_DIR.mkdir(exist_ok=True)
 
-# --- BUILD STATE MANAGEMENT ---
-build_states = {}
-build_states_lock = Lock()
+# --- TEMPLATES (ROBUST) ---
+
+# 1. Gradle: Ensures WebKit is included for Virtual Domain support
+BUILD_GRADLE_TEMPLATE = """buildscript {
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        classpath 'com.android.tools.build:gradle:7.3.0'
+    }
+}
+
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+apply plugin: 'com.android.application'
+
+android {
+    namespace 'com.APP_ID_PLACEHOLDER.webtoapk'
+
+    compileSdkVersion 33
+    defaultConfig {
+        applicationId "com.APP_ID_PLACEHOLDER.webtoapk"
+        minSdkVersion 24
+        targetSdkVersion 33
+        versionCode 1
+        versionName "1.0"
+    }
+
+    lintOptions {
+        checkReleaseBuilds false
+        abortOnError false
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_11
+        targetCompatibility JavaVersion.VERSION_11
+    }
+
+    signingConfigs {
+        release {
+            storeFile file("my-release-key.jks")
+            storePassword "123456"
+            keyAlias "my"
+            keyPassword "123456"
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            signingConfig signingConfigs.release
+        }
+    }
+}
+
+dependencies {
+    implementation 'androidx.appcompat:appcompat:1.6.1'
+    implementation 'androidx.core:core:1.9.0'
+    implementation 'org.unifiedpush.android:connector:3.0.10'
+    implementation 'androidx.media:media:1.6.0'
+    implementation 'androidx.localbroadcastmanager:localbroadcastmanager:1.1.0'
+
+    // REQUIRED: WebKit for WebViewAssetLoader (Fixes ES Modules & CORS)
+    implementation 'androidx.webkit:webkit:1.6.0'
+}
+"""
+
+# 2. MainActivity: Uses AssetLoader + Mixed Content Fixes
+MAIN_ACTIVITY_TEMPLATE = """package com.APP_ID_PLACEHOLDER.webtoapk;
+
+import androidx.appcompat.app.AppCompatActivity;
+import android.os.Bundle;
+import android.webkit.WebView;
+import android.webkit.WebViewClient;
+import android.webkit.WebChromeClient;
+import android.webkit.WebSettings;
+import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceResponse;
+import android.view.View;
+import android.widget.ProgressBar;
+import android.os.Build;
+import android.graphics.Color;
+import androidx.core.view.WindowCompat;
+import android.content.Intent;
+import android.net.Uri;
+
+// AssetLoader Import
+import androidx.webkit.WebViewAssetLoader;
+
+public class MainActivity extends AppCompatActivity {
+    private WebView webview;
+    private ProgressBar spinner;
+    private WebViewAssetLoader assetLoader;
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
+        getWindow().setStatusBarColor(Color.TRANSPARENT);
+        getWindow().setNavigationBarColor(Color.TRANSPARENT);
+
+        setContentView(R.layout.activity_main);
+
+        webview = findViewById(R.id.webView);
+        spinner = findViewById(R.id.progressBar1);
+
+        // Initialize AssetLoader (Maps "https://appassets.androidplatform.net/assets/" to local files)
+        assetLoader = new WebViewAssetLoader.Builder()
+            .addPathHandler("/assets/", new WebViewAssetLoader.AssetsPathHandler(this))
+            .build();
+
+        webview.setWebViewClient(new WebViewClient() {
+            // INTERCEPT REQUESTS: Serve local files via virtual HTTPS domain
+            @Override
+            public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
+                WebResourceResponse response = assetLoader.shouldInterceptRequest(request.getUrl());
+                if (response != null) return response;
+                return super.shouldInterceptRequest(view, request);
+            }
+
+            @Override
+            public void onPageFinished(WebView view, String url) {
+                spinner.setVisibility(View.GONE);
+                webview.setVisibility(View.VISIBLE);
+            }
+
+            // Handle external links
+            @Override
+            public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+                String url = request.getUrl().toString();
+                // Allow our virtual domain
+                if (url.startsWith("https://appassets.androidplatform.net")) return false;
+                return false;
+            }
+        });
+
+        webview.setWebChromeClient(new WebChromeClient());
+
+        WebSettings settings = webview.getSettings();
+        settings.setJavaScriptEnabled(true);
+        settings.setDomStorageEnabled(true);
+        settings.setDatabaseEnabled(true);
+
+        // --- CRITICAL FIXES ---
+
+        // 1. Allow HTTP (Videos) on HTTPS (App)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            settings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
+        }
+
+        // 2. Allow Autoplay
+        settings.setMediaPlaybackRequiresUserGesture(false);
+
+        // 3. File Access (Backup)
+        settings.setAllowFileAccess(true);
+        settings.setAllowUniversalAccessFromFileURLs(true);
+
+        webview.loadUrl("MAIN_URL_PLACEHOLDER");
+    }
+
+    @Override
+    public void onBackPressed() {
+        if (webview.canGoBack()) webview.goBack();
+        else super.onBackPressed();
+    }
+}
+"""
 
 # --- HELPERS ---
+
+build_states = {}
+build_states_lock = Lock()
 
 def run_command(command: list[str], cwd: Path, output_target_dir: Path = None) -> None:
     env = os.environ.copy()
@@ -51,265 +225,145 @@ def write_conf(app_id: str, name: str, target_path: Path) -> None:
     content = f"id = {app_id}\nname = {name}\nicon = {ICON_FILENAME}\n"
     target_path.write_text(content, encoding="utf-8")
 
-def fix_project_structure() -> None:
-    """Syncs the Android folder structure with the Gradle configuration."""
-    try:
-        java_files = list(ANDROID_DIR.glob("app/src/main/java/com/*/webtoapk/MainActivity.java"))
-        if not java_files: return
+def overwrite_android_files(app_id: str, main_url: str) -> None:
+    """Completely regenerates the Android source files to prevent corruption."""
+    print(f"[BUILDER] Overwriting Android Source Files for {app_id}...")
 
-        current_folder_id = java_files[0].parent.parent.name
-        gradle_path = ANDROID_DIR / "app/build.gradle"
-        if not gradle_path.exists(): return
+    # 1. Overwrite build.gradle
+    gradle_path = ANDROID_DIR / "app/build.gradle"
+    gradle_content = BUILD_GRADLE_TEMPLATE.replace("APP_ID_PLACEHOLDER", app_id)
+    gradle_path.write_text(gradle_content, encoding="utf-8")
 
-        content = gradle_path.read_text(encoding="utf-8")
-        match = re.search(r'applicationId "com\.([a-zA-Z0-9_]+)\.webtoapk"', content)
+    # 2. Overwrite MainActivity.java
+    package_dir = ANDROID_DIR / "app/src/main/java/com" / app_id / "webtoapk"
+    package_dir.mkdir(parents=True, exist_ok=True)
 
-        if match:
-            configured_id = match.group(1)
-            if configured_id != current_folder_id:
-                print(f"[BUILDER] Syncing Gradle ID '{configured_id}' to Folder '{current_folder_id}'")
-                new_content = content.replace(f'applicationId "com.{configured_id}.webtoapk"', f'applicationId "com.{current_folder_id}.webtoapk"')
-                gradle_path.write_text(new_content, encoding="utf-8")
-    except Exception as e:
-        print(f"[BUILDER] Auto-fix warning: {e}")
+    # Clean old files to prevent "Duplicate Class" errors
+    src_root = ANDROID_DIR / "app/src/main/java"
+    for f in src_root.glob("**/MainActivity.java"):
+        if f.parent.resolve() != package_dir.resolve():
+            f.unlink()
 
-def patch_source_code(app_id: str) -> None:
-    """
-    Updates package name and injects Mixed Content/CORS fixes
-    into the existing MainActivity.java without overwriting it.
-    """
-    java_files = list(ANDROID_DIR.glob("app/src/main/java/**/*.java"))
-    print(f"[BUILDER] Patching {len(java_files)} source files for App ID '{app_id}'...")
-
-    for file_path in java_files:
-        try:
-            content = file_path.read_text(encoding="utf-8")
-            original = content
-
-            # 1. Update Package Name
-            content = re.sub(r'package\s+com\.[a-zA-Z0-9_]+\.webtoapk;', f'package com.{app_id}.webtoapk;', content)
-
-            # 2. Inject Fixes into MainActivity.java (Idempotent)
-            if file_path.name == "MainActivity.java":
-                # Fix Location Permission ID
-                content = content.replace('LOCATION_PERMISSION_REQUEST_CODE = "";', 'LOCATION_PERMISSION_REQUEST_CODE = 1001;')
-
-                # The Code we want to inject
-                injection_code = """
-        // --- INJECTED FIXES ---
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            webSettings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
-        }
-        webSettings.setMediaPlaybackRequiresUserGesture(false);
-        webSettings.setAllowFileAccess(true);
-        webSettings.setAllowFileAccessFromFileURLs(true);
-        webSettings.setAllowUniversalAccessFromFileURLs(true);
-        // ----------------------
-        """
-                # We find a safe anchor point to inject after
-                anchor = "webSettings.setDatabaseEnabled(DatabaseEnabled);"
-
-                # Only inject if not already present (Prevents duplication/crashes)
-                if anchor in content and "setMixedContentMode" not in content:
-                    content = content.replace(anchor, anchor + injection_code)
-
-            if content != original:
-                file_path.write_text(content, encoding="utf-8")
-
-        except Exception as e:
-            print(f"[BUILDER] Warning patching {file_path.name}: {e}")
-
-def update_build_state(build_id: str, **kwargs) -> None:
-    with build_states_lock:
-        if build_id in build_states:
-            build_states[build_id].update(kwargs)
+    java_file = package_dir / "MainActivity.java"
+    java_content = MAIN_ACTIVITY_TEMPLATE.replace("APP_ID_PLACEHOLDER", app_id).replace("MAIN_URL_PLACEHOLDER", main_url)
+    java_file.write_text(java_content, encoding="utf-8")
 
 def execute_build_async(build_id: str, data: dict) -> None:
-    try:
-        app_id = data.get("app_id")
-        name = data.get("name")
-        icon_data = data.get("icon_data")
-        main_url = data.get("main_url")
-        zip_data = data.get("zip_data")
+    def update(progress, msg, status="in_progress", **kwargs):
+        with build_states_lock:
+            build_states[build_id].update({"progress": progress, "message": msg, "status": status, **kwargs})
 
-        is_local_file = zip_data is not None
+    try:
+        app_id, name = data["app_id"], data["name"]
         app_output_dir = OUTPUT_DIR / app_id
         app_output_dir.mkdir(parents=True, exist_ok=True)
 
-        update_build_state(build_id, stage="Initializing", progress=5, message="Restoring project structure...")
-        fix_project_structure()
+        update(5, "Preparing assets...")
+        (app_output_dir / ICON_FILENAME).write_bytes(data["icon_data"])
 
-        update_build_state(build_id, stage="Preparing assets", progress=15, message="Saving app icon...")
-        (app_output_dir / ICON_FILENAME).write_bytes(icon_data)
-
-        if is_local_file:
-            update_build_state(build_id, stage="Preparing assets", progress=20, message="Extracting uploaded assets...")
+        if data["zip_data"]:
+            # Local File Mode
             assets_dir = ANDROID_DIR / "app/src/main/assets"
-
-            if assets_dir.exists():
-                shutil.rmtree(assets_dir)
+            if assets_dir.exists(): shutil.rmtree(assets_dir)
             assets_dir.mkdir(parents=True, exist_ok=True)
 
-            temp_zip = app_output_dir / "assets.zip"
-            temp_zip.write_bytes(zip_data)
+            zip_path = app_output_dir / "assets.zip"
+            zip_path.write_bytes(data["zip_data"])
+            with zipfile.ZipFile(zip_path, 'r') as z: z.extractall(assets_dir)
+            zip_path.unlink()
 
-            try:
-                with zipfile.ZipFile(temp_zip, 'r') as zip_ref:
-                    zip_ref.extractall(assets_dir)
-            except zipfile.BadZipFile:
-                raise RuntimeError("Uploaded file is not a valid zip archive.")
-            finally:
-                temp_zip.unlink()
+            # Find index.html
+            index_file = next((p for p in assets_dir.rglob("index.htm*")), None)
+            if not index_file: raise RuntimeError("No index.html found in zip")
 
-            found_index = list(assets_dir.rglob("index.html"))
-            if not found_index:
-                found_index = list(assets_dir.rglob("index.htm"))
-            if not found_index:
-                raise RuntimeError("Could not find 'index.html' inside the uploaded zip.")
+            rel_path = str(index_file.relative_to(assets_dir)).replace("\\", "/")
 
-            relative_path = found_index[0].relative_to(assets_dir)
-            relative_path_str = str(relative_path).replace("\\", "/")
-
-            # Use standard file URL (CORS is now handled by MainActivity injection)
-            final_url = f"file:///android_asset/{relative_path_str}"
-            print(f"[BUILDER] Local asset mode. Launch URL: {final_url}")
-            update_build_state(build_id, progress=25, message="Assets extracted successfully")
+            # KEY FIX: Virtual Domain for ES Modules support
+            final_url = f"https://appassets.androidplatform.net/assets/{rel_path}"
         else:
-            final_url = main_url
-            update_build_state(build_id, progress=25, message="Using remote URL")
+            # URL Mode
+            final_url = data["main_url"]
 
-        update_build_state(build_id, stage="Configuring project", progress=35, message="Generating configuration...")
+        update(15, "Cleaning previous builds...")
+        # CRITICAL FIX: Clean build artifacts to prevent crashes from stale cache
+        # We ignore errors here in case clean fails on a fresh run
+        try:
+            run_command(["bash", str(MAKE_SH_PATH), "clean"], cwd=BASE_DIR)
+        except:
+            pass
+
+        update(25, "Configuring project...")
         conf_path = app_output_dir / CONF_FILENAME
         write_conf(app_id, name, conf_path)
 
-        update_build_state(build_id, stage="Configuring project", progress=45, message="Applying configuration to project...")
+        # Run make.sh apply_config (handles Manifest updates)
         run_command(["bash", str(MAKE_SH_PATH), "apply_config", str(conf_path)], cwd=BASE_DIR)
 
-        update_build_state(build_id, stage="Patching source code", progress=55, message="Injecting features...")
-        # Call our safe patcher
-        patch_source_code(app_id)
+        # Overwrite source code with correct templates (AssetLoader + Mixed Content)
+        update(40, "Injecting source code...")
+        overwrite_android_files(app_id, final_url)
 
-        update_build_state(build_id, stage="Building APK", progress=60, message="Compiling Android project...")
-        print("[BUILDER] Starting APK assembly...")
+        update(60, "Building APK (this takes a minute)...")
         run_command(["bash", str(MAKE_SH_PATH), "apk"], cwd=BASE_DIR, output_target_dir=app_output_dir)
 
-        update_build_state(build_id, stage="Finalizing", progress=95, message="Verifying APK file...")
         final_apk = app_output_dir / f"{app_id}.apk"
-        if not final_apk.exists():
-            raise FileNotFoundError(f"APK not found at {final_apk}")
+        if not final_apk.exists(): raise FileNotFoundError("APK build failed")
 
-        update_build_state(
-            build_id,
-            status="complete",
-            stage="Complete",
-            progress=100,
-            message="APK ready for download!",
-            apk_path=str(final_apk),
-            apk_filename=f"{app_id}_release.apk"
-        )
+        update(100, "Done!", "complete", apk_path=str(final_apk), apk_filename=f"{app_id}_release.apk")
 
     except Exception as e:
-        print(f"[BUILDER] Build failed: {str(e)}")
-        update_build_state(
-            build_id,
-            status="error",
-            stage="Error",
-            message=f"Build failed: {str(e)}",
-            error=str(e)
-        )
+        print(f"Build Error: {e}")
+        update(0, f"Error: {str(e)}", "error", error=str(e))
 
-# --- HANDLERS ---
+# --- ROUTES ---
 
 @post("/build-app")
 async def build_apk(data: Annotated[dict, Body(media_type=RequestEncodingType.MULTI_PART)]) -> dict:
-    app_id = data.get("app_id")
-    name = data.get("name")
-    icon_file = data.get("icon")
-    main_url = data.get("main_url")
-    zip_file = data.get("zip_file")
-
-    if not all([app_id, name, icon_file]):
-        raise RuntimeError("Missing required fields (ID, Name, or Icon).")
-    if not zip_file and not main_url:
-        raise RuntimeError("You must provide either a Website URL or a Zip file.")
-
     build_id = str(uuid.uuid4())
     with build_states_lock:
-        build_states[build_id] = {
-            "status": "in_progress",
-            "stage": "Starting",
-            "progress": 0,
-            "message": "Build request received..."
-        }
+        build_states[build_id] = {"status": "in_progress", "progress": 0, "message": "Starting..."}
 
-    build_data = {
-        "app_id": app_id,
-        "name": name,
-        "icon_data": await icon_file.read(),
-        "main_url": main_url,
-        "zip_data": await zip_file.read() if zip_file else None
+    thread_data = {
+        "app_id": data["app_id"], "name": data["name"],
+        "icon_data": await data["icon"].read(),
+        "main_url": data.get("main_url"),
+        "zip_data": await data["zip_file"].read() if data.get("zip_file") else None
     }
-
-    threading.Thread(target=execute_build_async, args=(build_id, build_data), daemon=True).start()
-    return {"build_id": build_id, "message": "Build started"}
+    threading.Thread(target=execute_build_async, args=(build_id, thread_data), daemon=True).start()
+    return {"build_id": build_id}
 
 @get("/build-progress/{build_id:str}")
-async def stream_build_progress(build_id: str) -> Stream:
-    """Stream build progress using raw SSE format to support named events."""
-    from typing import AsyncGenerator
-    async def event_generator() -> AsyncGenerator[str, None]:
-        if build_id not in build_states:
-            yield f"event: error\ndata: {json.dumps({'error': 'Invalid build ID'})}\n\n"
-            return
-        last_state = None
+async def stream_progress(build_id: str) -> Stream:
+    async def generator():
+        last = None
         while True:
-            with build_states_lock:
-                if build_id not in build_states:
-                    yield f"event: error\ndata: {json.dumps({'error': 'Build state lost'})}\n\n"
-                    break
-                current_state = build_states[build_id].copy()
+            with build_states_lock: state = build_states.get(build_id)
+            if not state: yield f"event: error\ndata: {json.dumps({'error': 'Invalid ID'})}\n\n"; break
 
-            if current_state != last_state:
-                # Standard update
-                event_data = json.dumps({
-                    "status": current_state.get("status", "in_progress"),
-                    "stage": current_state.get("stage", "Unknown"),
-                    "progress": current_state.get("progress", 0),
-                    "message": current_state.get("message", "")
-                })
-                yield f"data: {event_data}\n\n"
-                last_state = current_state
+            if state != last:
+                yield f"data: {json.dumps(state)}\n\n"
+                last = state.copy()
 
-            if current_state.get("status") == "complete":
-                # CRITICAL: Send specific 'complete' event for frontend
+            if state["status"] == "complete":
                 yield f"event: complete\ndata: {json.dumps({'build_id': build_id})}\n\n"
                 break
-
-            if current_state.get("status") == "error":
-                yield f"event: error\ndata: {json.dumps({'error': current_state.get('error', 'Unknown error')})}\n\n"
+            if state["status"] == "error":
+                yield f"event: error\ndata: {json.dumps({'error': state.get('error')})}\n\n"
                 break
-
             await asyncio.sleep(0.5)
 
-    return Stream(event_generator(), media_type="text/event-stream")
+    return Stream(generator(), media_type="text/event-stream")
 
 @get("/download-apk/{build_id:str}")
-async def download_apk(build_id: str) -> File:
-    with build_states_lock:
-        if build_id not in build_states: raise RuntimeError("Invalid build ID")
-        state = build_states[build_id]
-        if state.get("status") != "complete": raise RuntimeError("Build not complete")
-        apk_path = state.get("apk_path")
-        apk_filename = state.get("apk_filename", "app_release.apk")
+async def download(build_id: str) -> File:
+    with build_states_lock: state = build_states.get(build_id)
+    if not state or state["status"] != "complete": raise RuntimeError("Not ready")
+    return File(path=Path(state["apk_path"]), filename=state["apk_filename"], media_type="application/vnd.android.package-archive")
 
-    if not apk_path or not Path(apk_path).exists(): raise RuntimeError("APK file not found")
-    return File(path=Path(apk_path), filename=apk_filename, media_type="application/vnd.android.package-archive")
+# --- RUN ---
+cors = CORSConfig(allow_origins=["*"])
+app = Litestar(route_handlers=[build_apk, stream_progress, download], cors_config=cors)
 
-# --- SERVER ---
-cors_config = CORSConfig(allow_origins=["*"], allow_headers=["*"], allow_methods=["GET", "POST"])
-app = Litestar(route_handlers=[build_apk, stream_build_progress, download_apk], cors_config=cors_config)
-
-# Fix "Address already in use"
 class ReusableTCPServer(socketserver.TCPServer):
     allow_reuse_address = True
 
@@ -319,11 +373,10 @@ if __name__ == "__main__":
 
     def serve_front():
         handler = http.server.SimpleHTTPRequestHandler
-        # Use Reusable Server
         with ReusableTCPServer(("", 8001), handler) as httpd:
-            print(f"[FRONTEND] Server started at http://localhost:8001")
+            print(f"[FRONTEND] http://localhost:8001")
             httpd.serve_forever()
 
     threading.Thread(target=serve_front, daemon=True).start()
-    print(f"[BACKEND] API Server started at http://0.0.0.0:8000")
+    print("[BACKEND] http://0.0.0.0:8000")
     uvicorn.run(app, host="0.0.0.0", port=8000, log_level="error")
